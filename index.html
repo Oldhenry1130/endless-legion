@@ -43,6 +43,14 @@ body { background: var(--sky); color: var(--paper); font-family: var(--f-body); 
 .chip { background: var(--ink-soft); border-radius: 999px; padding: 4px 12px; font-size: 13px; font-weight: 500; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .chip b { font-family: var(--f-display); font-weight: 400; color: var(--gold); letter-spacing: .03em; }
 
+.ult { pointer-events: auto; appearance: none; border: 0; cursor: pointer; color: var(--paper); font: 500 13px var(--f-body);
+  display: flex; align-items: center; gap: 8px; background: var(--ink-soft); border-radius: 999px; padding: 4px 10px 4px 12px; white-space: nowrap; }
+.ult-track { display: block; width: 96px; height: 10px; border-radius: 5px; background: rgba(255,255,255,.15); overflow: hidden; }
+#ultfill { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #ff9f1c, var(--gold)); }
+.ult.ready { color: var(--gold); font-weight: 900; box-shadow: 0 0 0 2px var(--gold), 0 0 16px rgba(255,210,63,.8); animation: ultpulse 1s ease-in-out infinite; }
+.ult.ready #ultfill { background: linear-gradient(90deg, var(--gold), #fff3b0); }
+.ult:focus-visible { outline: 3px solid var(--paper); outline-offset: 2px; }
+@keyframes ultpulse { 50% { transform: scale(1.06); } }
 #bossbar { position: absolute; left: 50%; transform: translateX(-50%); top: calc(84px + env(safe-area-inset-top, 0px)); width: min(70%, 360px); pointer-events: none; }
 #bossbar .label { font-family: var(--f-display); font-size: 13px; letter-spacing: .12em; color: var(--paper); text-align: center; text-shadow: 0 2px 0 var(--ink); margin-bottom: 4px; }
 #bossbar .track { height: 12px; border-radius: 6px; background: var(--ink-soft); overflow: hidden; border: 2px solid var(--ink); }
@@ -75,7 +83,7 @@ body { background: var(--sky); color: var(--paper); font-family: var(--f-body); 
 .btn:active { transform: translateY(4px); box-shadow: 0 2px 0 var(--gold-deep); }
 .btn:focus-visible { outline: 3px solid var(--paper); outline-offset: 3px; }
 .hint { font-size: 12px; color: rgba(255,255,255,.5); }
-@media (prefers-reduced-motion: reduce) { #banner { animation: none; } }
+@media (prefers-reduced-motion: reduce) { #banner, .ult.ready { animation: none; } }
 </style>
 </head>
 <body>
@@ -87,6 +95,7 @@ body { background: var(--sky); color: var(--paper); font-family: var(--f-body); 
     <div class="col">
       <div class="dist"><span id="dist">0</span><small>m</small></div>
       <div class="chip">最佳 <b id="best">0</b> m</div>
+      <button class="ult" id="ultbox" type="button" aria-label="施放大絕招"><span id="ultlabel">大絕招</span><span class="ult-track"><i id="ultfill"></i></span></button>
     </div>
     <div class="col right">
       <div class="chip">武器 <b id="wname">手槍</b></div>
@@ -105,7 +114,8 @@ body { background: var(--sky); color: var(--paper); font-family: var(--f-body); 
       <ul class="rules">
         <li><span class="tag g">+10</span>綠門增加人數，×2 直接翻倍</li>
         <li><span class="tag r">−8</span>紅門會扣人，但對它開槍可以把數字打上去</li>
-        <li><span class="tag y">GUN</span>撞上武器或強化（火力、射速、射程），共 10 種槍，越遠越強</li>
+        <li><span class="tag y">ULT</span>殺怪會累積左上角的能量，集滿後雙擊畫面（或按空白鍵）放大絕招，清空全場敵人</li>
+        <li><span class="tag y">GUN</span>撞上武器或強化（火力、射速、射程），共 10 種槍，各有擊退、暴擊、爆炸、穿透、燃燒、連鎖閃電等效果</li>
         <li><span class="tag b">BOSS</span>每 500 m 出現一次，擋不住就會損失大量士兵</li>
         <li><span class="tag r">LV</span>每 1000 m 難度升級，大王會連續出現，還有衝刺怪和會吐酸液的遠程怪</li>
       </ul>
@@ -144,18 +154,18 @@ const C = {
   runner: '#b6e02f', runnerDark: '#7a9a12', spitter: '#17b6a6', spitterDark: '#0d7a70', acid: '#9dff4a',
   good: '34,197,94', bad: '239,68,68', gold: '#ffd23f', ink: '#141826',
 };
+// fx: how the shot looks; knock / crit / slow / splash / pierce / burn / chain / beam: its special effect
 const WEAPONS = [
-  { name: '手槍',     dmg: 1.0, rate: 2.5, spd: 38,  pellets: 1, spread: 0,    color: '#ffe066', range: 40 },
-  { name: '衝鋒槍',   dmg: 0.8, rate: 7,   spd: 42,  pellets: 1, spread: 0.03, color: '#ffd23f', range: 40 },
-  { name: '霰彈槍',   dmg: 0.9, rate: 2,   spd: 36,  pellets: 5, spread: 0.10, color: '#ffb347', range: 28 },
-  { name: '步槍',     dmg: 2.6, rate: 3.5, spd: 58,  pellets: 1, spread: 0,    color: '#9be7ff', range: 56 },
-  { name: '加特林',   dmg: 1.2, rate: 12,  spd: 48,  pellets: 1, spread: 0.05, color: '#ff9f1c', range: 44 },
-  { name: '火箭筒',   dmg: 7.0, rate: 1.1, spd: 30,  pellets: 1, spread: 0,    color: '#ff5d5d', range: 54, splash: 1.9 },
-  // high tier: pierce = extra monsters a bullet passes through
-  { name: '雷射槍',   dmg: 2.2, rate: 6,   spd: 85,  pellets: 1, spread: 0,    color: '#4df3ff', range: 62, pierce: 3, width: .07 },
-  { name: '火焰噴射器', dmg: 1.1, rate: 18, spd: 26, pellets: 2, spread: 0.16, color: '#ff7a1a', range: 22, pierce: 2, width: .22 },
-  { name: '電漿砲',   dmg: 6.5, rate: 3,   spd: 44,  pellets: 1, spread: 0.02, color: '#c77dff', range: 58, splash: 1.7 },
-  { name: '軌道砲',   dmg: 18,  rate: 1.4, spd: 120, pellets: 1, spread: 0,    color: '#ffffff', range: 72, pierce: 99, width: .16 },
+  { name: '手槍',       tag: '基本',     fx: 'bullet', dmg: 1.0, rate: 2.5, spd: 38, pellets: 1, spread: 0,    color: '#ffe066', range: 40 },
+  { name: '衝鋒槍',     tag: '連射',     fx: 'bullet', dmg: 0.8, rate: 7,   spd: 42, pellets: 1, spread: 0.03, color: '#ffd23f', range: 40 },
+  { name: '霰彈槍',     tag: '擊退',     fx: 'pellet', dmg: 0.9, rate: 2,   spd: 36, pellets: 5, spread: 0.10, color: '#ffb347', range: 28, knock: 0.45 },
+  { name: '步槍',       tag: '暴擊',     fx: 'bullet', dmg: 2.6, rate: 3.5, spd: 58, pellets: 1, spread: 0,    color: '#9be7ff', range: 56, crit: 0.3 },
+  { name: '加特林',     tag: '減速',     fx: 'bullet', dmg: 1.2, rate: 12,  spd: 48, pellets: 1, spread: 0.05, color: '#ff9f1c', range: 44, slow: 0.6 },
+  { name: '火箭筒',     tag: '爆炸',     fx: 'rocket', dmg: 7.0, rate: 1.1, spd: 30, pellets: 1, spread: 0,    color: '#ff5d5d', range: 54, splash: 1.9 },
+  { name: '雷射槍',     tag: '穿透',     fx: 'laser',  dmg: 2.2, rate: 6,   spd: 85, pellets: 1, spread: 0,    color: '#4df3ff', range: 62, pierce: 3 },
+  { name: '火焰噴射器', tag: '燃燒',     fx: 'flame',  dmg: 1.1, rate: 18,  spd: 26, pellets: 2, spread: 0.16, color: '#ff7a1a', range: 22, pierce: 2, burn: 0.6 },
+  { name: '電漿砲',     tag: '連鎖閃電', fx: 'plasma', dmg: 6.5, rate: 3,   spd: 44, pellets: 1, spread: 0.02, color: '#c77dff', range: 58, splash: 1.4, chain: 3 },
+  { name: '軌道砲',     tag: '貫穿光束', fx: 'beam',   dmg: 18,  rate: 1.4, spd: 0,  pellets: 1, spread: 0,    color: '#ffffff', range: 72, beam: true },
 ];
 
 // ---------- helpers ----------
@@ -195,6 +205,7 @@ let px = 0, targetX = 0, kills = 0, best = loadBest();
 let nextAt = 18, nextBoss = 500, eventCount = 0;
 let shake = 0, redFlash = 0, shotAcc = 0, rr = 0, gateStep = 1, boss = null;
 let bossQueue = 0, nextBossSpawn = 0, shots = [];
+let booms = [], arcs = [], beams = [], charge = 0, ultZ = -1, ultUses = 0, whiteFlash = 0, critTextCd = 0;
 let monsters = [], bullets = [], gates = [], pickups = [], parts = [], texts = [], soldiers = [];
 const keys = {};
 
@@ -202,6 +213,7 @@ function reset() {
   traveled = 0; N = 5; peak = 5; weaponIdx = 0; dmgMul = 1; rateMul = 1; rangeMul = 1;
   px = targetX = 0; kills = 0; nextAt = 18; nextBoss = 500; eventCount = 0;
   shake = redFlash = shotAcc = 0; boss = null; bossQueue = 0; nextBossSpawn = 0; shots = [];
+  booms = []; arcs = []; beams = []; charge = 0; ultZ = -1; ultUses = 0; whiteFlash = 0;
   monsters = []; bullets = []; gates = []; pickups = []; parts = []; texts = []; soldiers = [];
   $('bossbar').hidden = true;
 }
@@ -441,7 +453,12 @@ function update(dt) {
         const T = m.z / 16, t = tierOf(traveled);
         shots.push({ x: m.x, z: m.z - m.r, z0: m.z - m.r, vx: (px - m.x) / T, vz: -16, cost: Math.max(1 + t, Math.ceil(N * 0.01 * t)) });
       }
-    } else m.z -= (spd + m.spd) * dt;
+    } else m.z -= (spd + m.spd * (m.slow > 0 ? (m.type === 'boss' ? 0.6 : 0.2) : 1)) * dt;
+    if (m.slow > 0) m.slow -= dt;
+    if (m.burn > 0) {
+      m.burn -= dt; damage(m, m.burnDps * dt);
+      if (Math.random() < dt * 10 && parts.length < 500) burst(m.x, m.r * 1.3, m.z, Math.random() < .5 ? '#ff7a1a' : '#ffd23f', 1, 1.2);
+    }
     m.bob += dt * (m.type === 'boss' ? 4 : m.type === 'runner' ? 16 : 9);
     m.flash -= dt;
     if (m.z < 36) m.x = clamp(m.x + clamp(px - m.x, -1, 1) * m.home * dt, -HALF + m.r * 0.6, HALF - m.r * 0.6);
@@ -465,9 +482,12 @@ function update(dt) {
     while (shotAcc >= 1 && bullets.length < MAXB) {
       shotAcc -= 1;
       const s = soldiers[rr++ % shooters];
+      const range = Math.min(MAX_RANGE, w.range * rangeMul);
+      if (w.beam) { fireBeam(px + s.ox, s.oz + 0.3, per, range, w); continue; }
       for (let p = 0; p < w.pellets; p++) {
         const vx = w.spread ? w.spd * rand(-w.spread, w.spread) : 0;
-        bullets.push({ x: px + s.ox, z: s.oz + 0.3, pz: s.oz + 0.3, vx, vz: w.spd, life: Math.min(MAX_RANGE, w.range * rangeMul) / w.spd, dmg: per, splash: w.splash || 0, pierce: w.pierce || 0, width: w.width || 0, color: w.color });
+        const life = range / w.spd;
+        bullets.push({ x: px + s.ox, z: s.oz + 0.3, pz: s.oz + 0.3, vx, vz: w.spd, life, max: life, dmg: per, pierce: w.pierce || 0, w });
       }
     }
   }
@@ -484,6 +504,8 @@ function update(dt) {
   // bullets
   if (playing) for (const b of bullets) {
     b.pz = b.z; b.z += b.vz * dt; b.x += b.vx * dt; b.life -= dt;
+    if (b.w.fx === 'rocket' && Math.random() < 0.35 && parts.length < 500)
+      parts.push({ x: b.x, y: .55, z: b.z - .6, vx: rand(-.3, .3), vy: rand(.3, .8), vz: 0, life: .45, max: .45, color: '#cfcfcf', size: .1 });
     if (b.life <= 0 || Math.abs(b.x) > HALF + 0.3) { b.dead = true; continue; }
     for (const g of gates) {
       if (g.done || g.z > 46) continue;
@@ -504,17 +526,9 @@ function update(dt) {
     for (const m of monsters) {
       if (m.dead || (b.hits && b.hits.has(m))) continue;
       if (Math.abs(b.x - m.x) < m.r * 0.9 && b.z >= m.z - m.r * 0.7 && b.pz <= m.z + m.r * 0.7) {
-        damage(m, b.dmg);
-        if (b.pierce > 0) {
-          b.pierce--; (b.hits ||= new Set()).add(m);
-          if (Math.random() < 0.25) burst(b.x, m.r, m.z - m.r * .5, b.color, 1, 2);
-          continue;
-        }
+        applyHit(m, b.dmg, b.w, b.x);
+        if (b.pierce > 0) { b.pierce--; (b.hits ||= new Set()).add(m); continue; }
         b.dead = true;
-        if (b.splash) {
-          for (const o of monsters) if (o !== m && !o.dead && Math.hypot(o.x - m.x, o.z - m.z) < b.splash) damage(o, b.dmg * 0.7);
-          burst(b.x, .6, m.z, '#ff9f1c', 8, 5);
-        } else if (Math.random() < 0.25) burst(b.x, m.r, m.z - m.r * .5, b.color, 1, 2);
         break;
       }
     }
@@ -550,6 +564,25 @@ function update(dt) {
   for (const t of texts) { t.y += dt * 1.6; t.life -= dt; }
 
   monsters = monsters.filter(m => !m.dead && m.z > -5);
+  // ultimate: a shockwave sweeps from the squad to the horizon and wipes out every enemy it passes
+  if (ultZ >= 0) {
+    ultZ += 85 * dt;
+    for (const m of monsters) {
+      if (m.dead || m.z > ultZ) continue;
+      m.dead = true; kills++;
+      burst(m.x, m.r, m.z, Math.random() < .5 ? '#ffd23f' : '#ff7a1a', m.type === 'boss' ? 40 : m.type === 'brute' ? 12 : 4, m.type === 'boss' ? 8 : 5);
+      if (booms.length < 140) booms.push({ x: m.x, z: m.z, r: 1.2 + m.r * 1.5, life: .55, max: .55, color: '#ffb347' });
+      if (m.type === 'boss') floatText(m.x, m.z, 'BOSS 擊破', C.gold, 1.6);
+    }
+    for (const s of shots) if (s.z <= ultZ) s.dead = true;
+    if (ultZ > SPAWN_Z + 10) ultZ = -1;
+  }
+  for (const b of booms) b.life -= dt;
+  for (const a of arcs) a.life -= dt;
+  for (const b of beams) b.life -= dt;
+  booms = booms.filter(b => b.life > 0); arcs = arcs.filter(a => a.life > 0); beams = beams.filter(b => b.life > 0);
+  whiteFlash = Math.max(0, whiteFlash - dt * 1.4); critTextCd -= dt;
+
   bullets = bullets.filter(b => !b.dead);
   gates = gates.filter(g => g.z > -2.5);
   pickups = pickups.filter(p => !p.taken && p.z > -4);
@@ -561,10 +594,56 @@ function update(dt) {
   shake *= Math.pow(0.02, dt); redFlash = Math.max(0, redFlash - dt);
 }
 
+// one hit from weapon w, with that weapon's special effect
+function applyHit(m, dmg, w, x) {
+  if (w.crit && Math.random() < w.crit) {
+    dmg *= 3; burst(m.x, m.r * 1.4, m.z, '#fff27a', 3, 3);
+    if (critTextCd <= 0) { floatText(m.x, m.z, '暴擊！', '#fff27a', .7); critTextCd = .35; }
+  }
+  damage(m, dmg);
+  if (w.knock && m.type !== 'boss') m.z += w.knock * (m.type === 'brute' ? 0.35 : 1);
+  if (w.slow) m.slow = Math.max(m.slow || 0, w.slow);
+  if (w.burn) { m.burn = 2; m.burnDps = Math.max(m.burnDps || 0, dmg * w.burn); }
+  if (w.splash) {
+    for (const o of monsters) if (o !== m && !o.dead && Math.hypot(o.x - m.x, o.z - m.z) < w.splash) damage(o, dmg * 0.7);
+    if (booms.length < 140) booms.push({ x: m.x, z: m.z, r: w.splash, life: .35, max: .35, color: w.color });
+    burst(m.x, .6, m.z, w.fx === 'plasma' ? '#e0b3ff' : '#ff9f1c', 6, 5);
+  }
+  if (w.chain) {
+    let from = m; const hit = new Set([m]);
+    for (let i = 0; i < w.chain; i++) {
+      let next = null, bd = 3.5;
+      for (const o of monsters) { if (o.dead || hit.has(o)) continue; const dd = Math.hypot(o.x - from.x, o.z - from.z); if (dd < bd) { bd = dd; next = o; } }
+      if (!next) break;
+      if (arcs.length < 80) arcs.push({ x0: from.x, z0: from.z, y0: from.r, x1: next.x, z1: next.z, y1: next.r, life: .15 });
+      damage(next, dmg * 0.6); hit.add(next); from = next;
+    }
+  }
+  if (!w.splash && Math.random() < 0.2) burst(x, m.r, m.z - m.r * .5, w.color, 1, 2);
+}
+// railgun: instant beam that hits everything in its line
+function fireBeam(x, z0, dmg, range, w) {
+  const z1 = z0 + range;
+  for (const m of monsters) if (!m.dead && m.z > z0 && m.z - m.r < z1 && Math.abs(m.x - x) < m.r * 0.9 + 0.15) applyHit(m, dmg, w, x);
+  for (const s of shots) if (!s.dead && s.z > z0 && s.z < z1 && Math.abs(s.x - x) < 0.4) s.dead = true;
+  if (beams.length < 40) beams.push({ x, z0, z1, life: .16 });
+}
+
+const ULT_GAIN = { grunt: 1, runner: 1, spitter: 3, brute: 8, boss: 40 };
+const ultNeed = () => 480 * (1 + 0.6 * tierOf(traveled));
+function castUlt() {
+  if (state !== 'play' || paused || charge < 1 || ultZ >= 0) return;
+  charge = 0; ultZ = 0; ultUses++;
+  whiteFlash = 0.9; shake = 16;
+  showBanner('大絕招！');
+  for (let i = 0; i < 6; i++) booms.push({ x: px + rand(-3, 3), z: rand(1, 6), r: rand(2, 3.5), life: .7, max: .7, color: '#ffd23f' });
+}
+
 function damage(m, dmg) {
   m.hp -= dmg; m.flash = 0.07;
   if (m.hp <= 0 && !m.dead) {
     m.dead = true; kills++;
+    if (state === 'play') charge = Math.min(1, charge + ULT_GAIN[m.type] / ultNeed());
     const col = m.type === 'boss' ? C.gold : monsterColors(m)[0];
     burst(m.x, m.r, m.z, col, m.type === 'brute' ? 14 : m.type === 'boss' ? 40 : 6, m.type === 'boss' ? 7 : 4);
     if (m.type === 'boss') { floatText(m.x, m.z, 'BOSS 擊破', C.gold, 1.6); shake = 10; }
@@ -730,7 +809,7 @@ function drawPickup(p) {
   ctx.fillStyle = C.ink; ctx.beginPath(); ctx.arc(sx, sy, r * 1.08, 0, Math.PI * 2); ctx.fill();
   ctx.fillStyle = p.kind === 'weapon' ? C.gold : '#62e3ff'; ctx.beginPath(); ctx.arc(sx, sy, r, 0, Math.PI * 2); ctx.fill();
   let label;
-  if (p.kind === 'weapon') { drawGun(sx, sy - r * .12, r * 1.05, C.ink); label = WEAPONS[p.wi].name; }
+  if (p.kind === 'weapon') { drawGun(sx, sy - r * .12, r * 1.05, C.ink); label = WEAPONS[p.wi].name + '・' + WEAPONS[p.wi].tag; }
   else {
     label = { power: '火力 +25%', rate: '射速 +15%', range: '射程 +15%' }[p.kind];
     ctx.font = `${Math.max(8, r * .9)}px "Noto Sans TC", sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
@@ -762,13 +841,89 @@ function drawSoldier(s) {
   ctx.fillStyle = C.helmet; ctx.beginPath(); ctx.arc(sx, sy - r * 1.05, r * .6, Math.PI, 0); ctx.fill();
 }
 
+function strokeLine(a, b) { ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke(); }
 function drawBullets() {
   ctx.lineCap = 'round';
   for (const b of bullets) {
-    const a = P(b.x, .55, b.z), t = P(b.x - b.vx * .02, .55, b.z - (b.splash ? .4 : b.pierce > 10 ? 2.5 : .9));
-    ctx.strokeStyle = b.color; ctx.lineWidth = Math.max(1.5, a[2] * (b.width || (b.splash ? .22 : .08)));
-    ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(t[0], t[1]); ctx.stroke();
+    const w = b.w, a = P(b.x, .55, b.z), s = a[2];
+    switch (w.fx) {
+      case 'rocket': {
+        ctx.strokeStyle = '#e6e6e6'; ctx.lineWidth = Math.max(2, s * .16); strokeLine(a, P(b.x, .55, b.z - .6));
+        ctx.fillStyle = w.color; ctx.beginPath(); ctx.arc(a[0], a[1], Math.max(2, s * .11), 0, Math.PI * 2); ctx.fill();
+        break;
+      }
+      case 'laser': {
+        const t = P(b.x, .55, b.z - 3);
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.strokeStyle = 'rgba(77,243,255,.45)'; ctx.lineWidth = Math.max(3, s * .16); strokeLine(a, t);
+        ctx.strokeStyle = '#e8fdff'; ctx.lineWidth = Math.max(1.2, s * .04); strokeLine(a, t);
+        ctx.globalCompositeOperation = 'source-over';
+        break;
+      }
+      case 'flame': {
+        const k = 1 - b.life / b.max;
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = Math.max(0, 0.85 - k * 0.75);
+        ctx.fillStyle = k < .35 ? '#ffd23f' : k < .7 ? '#ff7a1a' : '#e0391f';
+        ctx.beginPath(); ctx.arc(a[0], a[1] - k * s * .4, Math.max(2, s * (.12 + k * .38)), 0, Math.PI * 2); ctx.fill();
+        ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+        break;
+      }
+      case 'plasma': {
+        ctx.fillStyle = 'rgba(199,125,255,.35)'; ctx.beginPath(); ctx.arc(a[0], a[1], Math.max(4, s * .38), 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = w.color; ctx.beginPath(); ctx.arc(a[0], a[1], Math.max(3, s * .2), 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(a[0], a[1], Math.max(1.5, s * .08), 0, Math.PI * 2); ctx.fill();
+        break;
+      }
+      case 'pellet': {
+        ctx.fillStyle = w.color; ctx.beginPath(); ctx.arc(a[0], a[1], Math.max(1.5, s * .07), 0, Math.PI * 2); ctx.fill();
+        break;
+      }
+      default: {
+        ctx.strokeStyle = w.color; ctx.lineWidth = Math.max(1.5, s * .08); strokeLine(a, P(b.x - b.vx * .02, .55, b.z - .9));
+      }
+    }
   }
+}
+
+function drawFx() {
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter'; ctx.lineCap = 'round';
+  for (const b of booms) {
+    const k = 1 - b.life / b.max, [sx, sy, s] = P(b.x, 0.05, b.z), r = b.r * s * (0.35 + k);
+    ctx.globalAlpha = (1 - k) * .45; ctx.fillStyle = b.color;
+    ctx.beginPath(); ctx.arc(sx, sy - r * .35, r * .65, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 1 - k; ctx.strokeStyle = b.color; ctx.lineWidth = Math.max(2, s * .2 * (1 - k));
+    ctx.beginPath(); ctx.ellipse(sx, sy, r, r * .38, 0, 0, Math.PI * 2); ctx.stroke();
+  }
+  for (const a of arcs) {
+    const p0 = P(a.x0, a.y0, a.z0), p1 = P(a.x1, a.y1, a.z1);
+    ctx.globalAlpha = Math.min(1, a.life / .1); ctx.strokeStyle = '#efe0ff'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(p0[0], p0[1]);
+    for (let i = 1; i < 6; i++) {
+      const k = i / 6, j = 10 * (Math.random() - .5);
+      ctx.lineTo(p0[0] + (p1[0] - p0[0]) * k + j, p0[1] + (p1[1] - p0[1]) * k + j);
+    }
+    ctx.lineTo(p1[0], p1[1]); ctx.stroke();
+  }
+  for (const b of beams) {
+    const p0 = P(b.x, .55, b.z0), p1 = P(b.x, .55, Math.min(b.z1, SPAWN_Z + 6)), k = b.life / .16;
+    for (const [wd, col] of [[.32, 'rgba(150,215,255,.35)'], [.1, 'rgba(255,255,255,.95)']]) {
+      ctx.globalAlpha = k; ctx.fillStyle = col;
+      ctx.beginPath();
+      ctx.moveTo(p0[0] - p0[2] * wd, p0[1]); ctx.lineTo(p1[0] - p1[2] * wd, p1[1]);
+      ctx.lineTo(p1[0] + p1[2] * wd, p1[1]); ctx.lineTo(p0[0] + p0[2] * wd, p0[1]);
+      ctx.closePath(); ctx.fill();
+    }
+  }
+  // ultimate shockwave band
+  if (ultZ >= 0) {
+    const z = Math.min(ultZ, SPAWN_Z + 8);
+    ctx.globalAlpha = 1;
+    quad(-HALF - 3, HALF + 3, Math.max(NEAR, z - 4), z, 'rgba(255,170,60,.35)');
+    quad(-HALF - 3, HALF + 3, Math.max(NEAR, z - 1), z, 'rgba(255,240,180,.8)');
+  }
+  ctx.restore();
 }
 
 function drawSquadLabel() {
@@ -796,6 +951,7 @@ function render() {
   items.sort((a, b) => b[0] - a[0]);
   for (const [, fn, o] of items) fn(o);
   drawBullets();
+  drawFx();
   for (const p of parts) {
     const [sx, sy, s] = P(p.x, p.y, p.z);
     ctx.globalAlpha = clamp(p.life / p.max * 1.4, 0, 1); ctx.fillStyle = p.color;
@@ -818,6 +974,7 @@ function render() {
   ctx.fillStyle = hz; ctx.fillRect(-20, HOR - 2, W + 40, H * 0.08 + 2);
   ctx.restore();
   if (redFlash > 0) { ctx.fillStyle = `rgba(239,68,68,${redFlash * 0.6})`; ctx.fillRect(0, 0, W, H); }
+  if (whiteFlash > 0) { ctx.fillStyle = `rgba(255,248,220,${Math.min(1, whiteFlash) * 0.85})`; ctx.fillRect(0, 0, W, H); }
   if (paused) {
     ctx.fillStyle = 'rgba(20,24,38,.5)'; ctx.fillRect(0, 0, W, H);
     ctx.fillStyle = '#fff'; ctx.font = '900 34px "Noto Sans TC", sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
@@ -833,13 +990,16 @@ function updateHud() {
   if (key !== hudCache) {
     hudCache = key;
     $('dist').textContent = d; $('best').textContent = Math.max(best, state === 'play' ? d : 0);
-    $('wname').textContent = WEAPONS[weaponIdx].name;
+    $('wname').textContent = WEAPONS[weaponIdx].name + '・' + WEAPONS[weaponIdx].tag;
     $('wpow').textContent = '×' + dmgMul.toFixed(2).replace(/0$/, '');
     $('wrate').textContent = '×' + rateMul.toFixed(2).replace(/0$/, '');
     $('wrange').textContent = '×' + rangeMul.toFixed(2).replace(/0$/, '');
     $('kills').textContent = kills;
     $('lvl').textContent = 'LV.' + (tierOf(d) + 1);
   }
+  const ub = $('ultbox'), ready = charge >= 1 && state === 'play';
+  $('ultfill').style.width = (charge * 100).toFixed(1) + '%';
+  if (ub.classList.contains('ready') !== ready) { ub.classList.toggle('ready', ready); $('ultlabel').textContent = ready ? '雙擊施放！' : '大絕招'; }
   const bb = $('bossbar');
   if (boss && state === 'play') {
     bb.hidden = false; $('bossfill').style.width = Math.max(0, boss.hp / boss.maxHp * 100) + '%';
@@ -856,8 +1016,16 @@ function pointerTo(clientX) {
   targetX = (clientX - r.left - CX) / S(0);
 }
 cv.addEventListener('pointermove', e => pointerTo(e.clientX));
-cv.addEventListener('pointerdown', e => { pointerTo(e.clientX); try { cv.setPointerCapture(e.pointerId); } catch (_) {} });
+let lastTap = 0;
+cv.addEventListener('pointerdown', e => {
+  pointerTo(e.clientX);
+  try { cv.setPointerCapture(e.pointerId); } catch (_) {}
+  const now = performance.now();
+  if (now - lastTap < 320) { castUlt(); lastTap = 0; } else lastTap = now;   // double click / double tap
+});
+$('ultbox').addEventListener('click', castUlt);
 addEventListener('keydown', e => {
+  if (e.key === ' ') { e.preventDefault(); castUlt(); }
   if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') keys.left = true;
   if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') keys.right = true;
   if ((e.key === 'p' || e.key === 'P') && state === 'play') paused = !paused;
@@ -870,6 +1038,7 @@ addEventListener('keyup', e => {
 window.__legionDebug = {
   jump(d, n, wi) { startGame(); for (const k in lossLog) delete lossLog[k]; traveled = d; N = peak = n; weaponIdx = wi ?? weaponIdx; nextAt = d + 5; nextBoss = Math.ceil(d / 500) * 500; },
   state: () => ({ d: Math.floor(traveled), N, lv: tierOf(traveled) + 1, monsters: monsters.length, bosses: monsters.filter(m => m.type === 'boss').length, bossQueue, shots: shots.length, state, lossLog }),
+  charge() { charge = 1; },
   // headless run steered by a simple player bot; used to tune difficulty
   sim(maxD = 8000, dt = 1 / 30) {
     startGame(); for (const k in lossLog) delete lossLog[k];
@@ -879,11 +1048,12 @@ window.__legionDebug = {
       const k = Math.floor(traveled / 1000) * 1000;
       if (!(k in marks)) marks[k] = N;
     }
-    return { d: Math.floor(traveled), peak, kills, weapon: WEAPONS[weaponIdx].name, dmgMul, rateMul, rangeMul, marks, lossLog: { ...lossLog } };
+    return { d: Math.floor(traveled), peak, kills, ult: ultUses, weapon: WEAPONS[weaponIdx].name, dmgMul, rateMul, rangeMul, marks, lossLog: { ...lossLog } };
   },
 };
 // takes the better gate, grabs upgrades, otherwise steps to the lane with the least threat
 function botThink() {
+  if (charge >= 1 && (monsters.some(m => m.type === 'boss' && m.z < 30) || monsters.filter(m => m.z < 30).length > 30)) castUlt();
   const result = s => s.kind === 'add' ? N + s.val : s.kind === 'mul' ? N * s.val : Math.ceil(N / s.val);
   const g = gates.find(g => !g.done && g.z > 0 && g.z < 22);
   if (g) { targetX = result(g.L) >= result(g.R) ? -2.5 : 2.5; return; }

@@ -91,11 +91,11 @@ body { background: var(--sky); color: var(--paper); font-family: var(--f-body); 
     <div class="col right">
       <div class="chip">武器 <b id="wname">手槍</b></div>
       <div class="chip">火力 <b id="wpow">×1.0</b> · 射速 <b id="wrate">×1.0</b></div>
-      <div class="chip">擊殺 <b id="kills">0</b></div>
+      <div class="chip">擊殺 <b id="kills">0</b> · 難度 <b id="lvl">LV.1</b></div>
     </div>
   </div>
 
-  <div id="bossbar" hidden><div class="label">BOSS</div><div class="track"><i id="bossfill"></i></div></div>
+  <div id="bossbar" hidden><div class="label" id="bosslabel">BOSS</div><div class="track"><i id="bossfill"></i></div></div>
   <div id="banner" hidden></div>
 
   <div class="overlay" id="menu">
@@ -107,6 +107,7 @@ body { background: var(--sky); color: var(--paper); font-family: var(--f-body); 
         <li><span class="tag r">−8</span>紅門會扣人，但對它開槍可以把數字打上去</li>
         <li><span class="tag y">GUN</span>撞上武器或強化，提升整支軍團火力</li>
         <li><span class="tag b">BOSS</span>每 500 m 出現一次，擋不住就會損失大量士兵</li>
+        <li><span class="tag r">LV</span>每 1000 m 難度升級，大王會連續出現，還有衝刺怪和會吐酸液的遠程怪</li>
       </ul>
       <button class="btn" id="startBtn" type="button">開始出征</button>
       <div class="hint">鍵盤：← → 或 A / D 移動，P 暫停</div>
@@ -140,6 +141,7 @@ const C = {
   curbA: '#e8473f', curbB: '#f4f4f4', line: 'rgba(255,255,255,.85)',
   squad: '#2f6bff', squadDark: '#1d46b8', skin: '#ffcf9e', helmet: '#24355e',
   grunt: '#9b3cf0', gruntDark: '#6a1fb3', brute: '#e0532f', bruteDark: '#9c2f16', boss: '#2b2d3a', bossDark: '#121320',
+  runner: '#b6e02f', runnerDark: '#7a9a12', spitter: '#17b6a6', spitterDark: '#0d7a70', acid: '#9dff4a',
   good: '34,197,94', bad: '239,68,68', gold: '#ffd23f', ink: '#141826',
 };
 const WEAPONS = [
@@ -159,6 +161,8 @@ const $ = id => document.getElementById(id);
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const difficulty = d => 1 + d / 220 + Math.pow(d / 700, 2);
 const scrollSpeed = d => Math.min(15, 8 + d / 260);
+const tierOf = d => Math.floor(d / 1000);                                      // difficulty level steps up every 1000 m
+const effArmy = n => n <= 200 ? n : 200 * Math.pow(n / 200, 0.7);             // huge armies gain firepower more slowly
 function loadBest() { try { return +localStorage.getItem('endless-legion-best') || 0; } catch (e) { return 0; } }
 function saveBest(v) { try { localStorage.setItem('endless-legion-best', String(v)); } catch (e) {} }
 
@@ -185,58 +189,107 @@ let traveled = 0, roadOff = 0, N = 5, peak = 5, weaponIdx = 0, dmgMul = 1, rateM
 let px = 0, targetX = 0, kills = 0, best = loadBest();
 let nextAt = 18, nextBoss = 500, eventCount = 0;
 let shake = 0, redFlash = 0, shotAcc = 0, rr = 0, gateStep = 1, boss = null;
+let bossQueue = 0, nextBossSpawn = 0, shots = [];
 let monsters = [], bullets = [], gates = [], pickups = [], parts = [], texts = [], soldiers = [];
 const keys = {};
 
 function reset() {
   traveled = 0; N = 5; peak = 5; weaponIdx = 0; dmgMul = 1; rateMul = 1;
   px = targetX = 0; kills = 0; nextAt = 18; nextBoss = 500; eventCount = 0;
-  shake = redFlash = shotAcc = 0; boss = null;
+  shake = redFlash = shotAcc = 0; boss = null; bossQueue = 0; nextBossSpawn = 0; shots = [];
   monsters = []; bullets = []; gates = []; pickups = []; parts = []; texts = []; soldiers = [];
   $('bossbar').hidden = true;
 }
 
 // ---------- spawning ----------
-function makeMonster(type, x, z, D) {
-  if (type === 'boss') return { type, x, z, r: 2.1, hp: 360 * D, maxHp: 360 * D, power: 45, spd: 0.9, home: 0.4, flash: 0, bob: Math.random() * 6 };
-  if (type === 'brute') return { type, x, z, r: 0.78, hp: 24 * D, maxHp: 24 * D, power: 6, spd: rand(1, 1.6), home: 0.5, flash: 0, bob: Math.random() * 6 };
-  return { type: 'grunt', x, z, r: 0.42, hp: 2 * D, maxHp: 2 * D, power: 1, spd: rand(1.4, 2.6), home: 0.9, flash: 0, bob: Math.random() * 6 };
+// Squad damage per second, used from LV.2 on so enemies keep pace with a snowballing army.
+function playerDps() {
+  const w = WEAPONS[weaponIdx];
+  return effArmy(N) * w.dmg * w.pellets * w.rate * dmgMul * rateMul;
+}
+
+// hp: distance-based floor, or seconds of the squad's full fire (LV.2+), whichever is higher.
+// power: soldiers lost on contact at full hp; from LV.2 on part of it is a share of the army.
+function makeMonster(type, x, z, d) {
+  const D = difficulty(d), t = tierOf(d), hpMul = 1 + 0.25 * t, dps = t > 0 ? playerDps() : 0;
+  const m = { type, x, z, flash: 0, bob: Math.random() * 6, cd: rand(0.6, 1.4), hold: 0 };
+  switch (type) {
+    case 'boss':
+      Object.assign(m, { r: 2.1, hp: Math.max(360 * D * hpMul, dps * (0.6 + 0.2 * t)), power: Math.max(45 * (1 + t), N * Math.min(0.4, 0.08 + 0.05 * t)), spd: 0.9, home: 0.4 });
+      break;
+    case 'brute':
+      Object.assign(m, { r: 0.78, hp: Math.max(24 * D * hpMul, dps * 0.08 * (1 + 0.25 * t)), power: Math.max(6 * (1 + t), N * 0.006 * t), spd: rand(1, 1.6), home: 0.5 });
+      break;
+    case 'runner':
+      Object.assign(m, { r: 0.34, hp: Math.max(1.2 * D * hpMul, dps * 0.0015 * (1 + 0.2 * t)), power: 1 + t + N * 0.0008 * t, spd: rand(6, 8), home: 1.6 });
+      break;
+    case 'spitter':
+      Object.assign(m, { r: 0.5, hp: Math.max(6 * D * hpMul, dps * 0.015 * (1 + 0.25 * t)), power: 2 + t, spd: rand(1.2, 1.8), home: 0.3, stopZ: rand(20, 28), stay: rand(5, 7) });
+      break;
+    default:
+      Object.assign(m, { type: 'grunt', r: 0.42, hp: Math.max(2 * D * hpMul, dps * 0.002 * (1 + 0.25 * t)), power: 1 + t + N * 0.0008 * t, spd: rand(1.4, 2.6), home: 0.9 });
+  }
+  m.maxHp = m.hp;
+  return m;
 }
 
 function spawnWave(d) {
-  const D = difficulty(d);
-  const n = Math.min(75, Math.round(5 + d / 32 + rand(0, 7)));
+  if (monsters.length > 240) return;
+  const t = tierOf(d);
+  const n = Math.min(140, Math.round((5 + d / 40 + rand(0, 7)) * (1 + 0.3 * t)));
   const bruteChance = Math.min(0.22, 0.02 + d / 3500);
-  const pattern = d < 120 ? 'lane' : ['lane', 'lane', 'both', 'stream'][ri(0, 3)];
+  const runnerChance = d < 300 ? 0 : Math.min(0.25, 0.05 + (d - 300) / 3000);
+  const patterns = ['lane', 'lane', 'both', 'stream'];
+  if (d > 300) patterns.push('rush');
+  const pattern = d < 120 ? 'lane' : patterns[ri(0, patterns.length - 1)];
   const sp = 0.95;
-  const put = (x, z) => monsters.push(makeMonster(Math.random() < bruteChance ? 'brute' : 'grunt', clamp(x, -HALF + 0.4, HALF - 0.4), z, D));
+  const put = (x, z, type) => {
+    if (monsters.length >= 220) return;
+    type = type || (Math.random() < bruteChance ? 'brute' : Math.random() < runnerChance ? 'runner' : 'grunt');
+    monsters.push(makeMonster(type, clamp(x, -HALF + 0.4, HALF - 0.4), z, d));
+  };
+  let depth = 0;
   if (pattern === 'lane') {
     const side = Math.random() < 0.5 ? -1 : 1, cols = ri(3, 5);
     for (let i = 0; i < n; i++) put(side * 2.5 + (i % cols - (cols - 1) / 2) * sp + rand(-.1, .1), SPAWN_Z + Math.floor(i / cols) * sp);
+    depth = Math.ceil(n / cols) * sp;
   } else if (pattern === 'both') {
     const cols = 9;
     for (let i = 0; i < n; i++) put((i % cols - (cols - 1) / 2) * 1.05 + rand(-.1, .1), SPAWN_Z + Math.floor(i / cols) * sp);
+    depth = Math.ceil(n / cols) * sp;
+  } else if (pattern === 'rush') {
+    // a fast column of runners charging down one lane
+    const side = Math.random() < 0.5 ? -1 : 1, k = Math.round(n * 0.6);
+    for (let i = 0; i < k; i++) put(side * 2.5 + (i % 2 ? .45 : -.45), SPAWN_Z + i * 0.8, 'runner');
+    depth = k * 0.8;
   } else {
     for (let i = 0; i < n; i++) put(Math.sin(i * 0.45) * 3.4, SPAWN_Z + i * 0.7);
+    depth = n * 0.7;
   }
+  // mini-bosses lead the wave from LV.2; ranged spitters trail behind it from 600 m
+  const brutes = t > 0 ? Math.min(8, ri(t, t + 2)) : 0;
+  for (let i = 0; i < brutes; i++) put(rand(-4, 4), SPAWN_Z - 1.5 - (i % 3) * 1.2, 'brute');
+  const spitters = d < 600 ? 0 : Math.min(6, ri(0, 1 + t));
+  for (let i = 0; i < spitters; i++) put(rand(-4, 4), SPAWN_Z + depth + 1 + i * 1.2, 'spitter');
 }
 
 function gateSpec(good, d) {
+  const t = tierOf(d);
   if (good) {
-    if (Math.random() < 0.28) return { kind: 'mul', val: d > 1500 && Math.random() < 0.3 ? 3 : 2 };
-    return { kind: 'add', val: Math.round(rand(3, 9) + d / 22) };
+    if (Math.random() < 0.28 / (1 + t)) return { kind: 'mul', val: 2 };
+    return { kind: 'add', val: Math.round(rand(3, 9) + d / 22 + (t ? N * rand(0.04, 0.1) : 0)) };
   }
-  if (Math.random() < 0.25 && d > 150) return { kind: 'div', val: 2 };
-  return { kind: 'add', val: -Math.round(rand(4, 9) + d / 18) };
+  if (d > 150 && Math.random() < 0.25 + 0.05 * t) return { kind: 'div', val: t >= 3 && Math.random() < 0.4 ? 3 : 2 };
+  return { kind: 'add', val: -Math.round(rand(4, 9) + d / 18 + N * Math.min(0.5, 0.12 * t)) };
 }
 function spawnGates(d) {
-  const roll = Math.random();
+  const t = tierOf(d), roll = Math.random();
   let a, b;
   if (d < 200 || roll < 0.62) { a = gateSpec(true, d); b = gateSpec(false, d); }
-  else if (roll < 0.86) { a = gateSpec(true, d); b = gateSpec(true, d); }
+  else if (roll < Math.max(0.72, 0.86 - 0.05 * t)) { a = gateSpec(true, d); b = gateSpec(true, d); }
   else { a = gateSpec(false, d); b = gateSpec(false, d); }
   if (Math.random() < 0.5) [a, b] = [b, a];
-  a.acc = b.acc = 0;
+  for (const g of [a, b]) { g.acc = 0; g.inc = Math.max(1, Math.round(Math.abs(g.val) / 25)); }
   gates.push({ z: SPAWN_Z, L: a, R: b, done: false, chosen: 0 });
 }
 
@@ -251,11 +304,21 @@ function spawnPickups(d) {
 }
 
 function spawnEvents() {
+  // boss chain: one boss at 500 m, then 1 + LV bosses back to back at every 500 m mark (max 5)
+  if (bossQueue > 0 && traveled >= nextBossSpawn) {
+    monsters.push(makeMonster('boss', rand(-2, 2), SPAWN_Z + 4, traveled));
+    bossQueue--;
+    nextBossSpawn = traveled + 22;
+    nextAt = Math.max(nextAt, traveled + 14);
+    return;
+  }
   if (traveled >= nextBoss) {
-    monsters.push(makeMonster('boss', rand(-1.5, 1.5), SPAWN_Z + 4, difficulty(traveled)));
-    boss = monsters[monsters.length - 1];
-    nextBoss += 500; nextAt = traveled + 26;
-    showBanner('BOSS 來襲');
+    const t = tierOf(traveled);
+    bossQueue = Math.min(5, 1 + t);
+    nextBossSpawn = traveled;
+    const levelUp = nextBoss % 1000 === 0;
+    nextBoss += 500;
+    showBanner(levelUp ? `LV.${t + 1}　大王 ×${bossQueue}` : bossQueue > 1 ? `大王連戰 ×${bossQueue}` : 'BOSS 來襲');
     return;
   }
   if (traveled < nextAt) return;
@@ -263,12 +326,16 @@ function spawnEvents() {
   if (eventCount === 1) spawnGates(traveled);
   else if (eventCount === 2) spawnWave(traveled);
   else {
+    // while a boss is on the road, only gates and pickups come; no extra waves pile up
+    const bossOnRoad = bossQueue > 0 || monsters.some(m => m.type === 'boss');
     const r = Math.random();
-    if (r < 0.52) spawnWave(traveled);
+    if (r < 0.52 && !bossOnRoad) spawnWave(traveled);
+    else if (r < 0.52) spawnGates(traveled);
     else if (r < 0.82) spawnGates(traveled);
     else spawnPickups(traveled);
   }
-  nextAt = traveled + rand(15, 22) * (1 - Math.min(0.3, traveled / 8000));
+  const t = tierOf(traveled);
+  nextAt = traveled + rand(15, 22) * Math.max(0.55, 1 - Math.min(0.3, traveled / 8000) - 0.06 * t);
 }
 
 // ---------- effects ----------
@@ -280,7 +347,9 @@ function floatText(x, z, text, color, size = 1) { texts.push({ x, y: 1.6, z, tex
 let bannerTimer = 0;
 function showBanner(t) { const b = $('banner'); b.textContent = t; b.hidden = false; b.style.animation = 'none'; void b.offsetWidth; b.style.animation = ''; bannerTimer = 1.8; }
 
-function loseSoldiers(n) {
+const lossLog = {};
+function loseSoldiers(n, src) {
+  lossLog[src] = (lossLog[src] || 0) + n;
   N -= n;
   floatText(px, 0.5, '−' + n, '#ff6b6b', 1.2);
   shake = Math.min(14, shake + 4 + n * 0.3); redFlash = 0.35;
@@ -294,6 +363,7 @@ function applyGate(g) {
   else N = Math.ceil(N / g.val);
   N = clamp(Math.round(N), 0, 99999);
   const diff = N - before;
+  if (diff < 0) lossLog.gate = (lossLog.gate || 0) - diff;
   floatText(px, 1, (diff >= 0 ? '+' : '−') + Math.abs(diff), diff >= 0 ? '#7dffa6' : '#ff6b6b', 1.3);
   if (diff < 0) { shake = Math.min(14, shake + 5); redFlash = 0.3; }
   if (N <= 0) gameOver();
@@ -353,15 +423,24 @@ function update(dt) {
 
   // monsters
   if (playing) for (const m of monsters) {
-    m.z -= (spd + m.spd) * dt;
-    m.bob += dt * (m.type === 'boss' ? 4 : 9);
+    // spitters stop at range and keep pace with the squad, lobbing acid, then walk on
+    const holding = m.type === 'spitter' && m.z <= m.stopZ && m.hold < m.stay;
+    if (holding) {
+      m.hold += dt; m.cd -= dt;
+      if (m.cd <= 0) {
+        m.cd = Math.max(0.9, 1.9 - 0.15 * tierOf(traveled));
+        const T = m.z / 16, t = tierOf(traveled);
+        shots.push({ x: m.x, z: m.z - m.r, z0: m.z - m.r, vx: (px - m.x) / T, vz: -16, cost: Math.max(1 + t, Math.ceil(N * 0.01 * t)) });
+      }
+    } else m.z -= (spd + m.spd) * dt;
+    m.bob += dt * (m.type === 'boss' ? 4 : m.type === 'runner' ? 16 : 9);
     m.flash -= dt;
     if (m.z < 36) m.x = clamp(m.x + clamp(px - m.x, -1, 1) * m.home * dt, -HALF + m.r * 0.6, HALF - m.r * 0.6);
     if (!m.dead && m.z - m.r * 0.6 < Rz && m.z + m.r * 0.6 > -Rz && Math.abs(m.x - px) < m.r * 0.8 + R) {
       const cost = Math.max(1, Math.ceil(m.hp / m.maxHp * m.power));
       m.dead = true;
-      burst(m.x, m.r, m.z, m.type === 'grunt' ? C.grunt : m.type === 'brute' ? C.brute : '#555', 10);
-      loseSoldiers(Math.min(cost, N));
+      burst(m.x, m.r, m.z, monsterColors(m)[0], 10);
+      loseSoldiers(Math.min(cost, N), m.type);
       if (state !== 'play') break;
     }
   }
@@ -372,7 +451,7 @@ function update(dt) {
     const shooters = Math.min(soldiers.length, SHOOT_CAP);
     const sps = shooters * w.rate * rateMul;
     gateStep = Math.max(1, sps / 2.5);
-    const per = w.dmg * dmgMul * N / shooters;
+    const per = w.dmg * dmgMul * effArmy(N) / shooters;
     shotAcc = Math.min(shotAcc + sps * dt, 8);
     while (shotAcc >= 1 && bullets.length < MAXB) {
       shotAcc -= 1;
@@ -403,10 +482,14 @@ function update(dt) {
         const side = b.x < 0 ? g.L : g.R;
         if (side.kind === 'add') {
           side.acc += 1 / gateStep;
-          if (side.acc >= 1) { const inc = Math.floor(side.acc); side.val += inc; side.acc -= inc; }
+          if (side.acc >= 1) { const inc = Math.floor(side.acc); side.val += inc * side.inc; side.acc -= inc; }
           b.dead = true; break;
         }
       }
+    }
+    if (b.dead) continue;
+    for (const s of shots) {   // acid blobs can be shot down
+      if (!s.dead && Math.abs(b.x - s.x) < 0.35 && b.z >= s.z - 0.3 && b.pz <= s.z + 0.3) { s.dead = b.dead = true; burst(s.x, shotY(s), s.z, C.acid, 4, 2); break; }
     }
     if (b.dead) continue;
     for (const m of monsters) {
@@ -421,6 +504,18 @@ function update(dt) {
         break;
       }
     }
+  }
+
+  // acid shots
+  if (playing) for (const s of shots) {
+    if (s.dead) continue;
+    s.z += s.vz * dt; s.x += s.vx * dt;
+    if (s.z < Rz && s.z > -Rz && Math.abs(s.x - px) < R + 0.2) {
+      s.dead = true;
+      burst(s.x, .5, s.z, C.acid, 8, 3);
+      loseSoldiers(Math.min(s.cost, N), 'acid');
+      if (state !== 'play') break;
+    } else if (s.z < -3) s.dead = true;
   }
 
   // pickups
@@ -445,7 +540,9 @@ function update(dt) {
   pickups = pickups.filter(p => !p.taken && p.z > -4);
   parts = parts.filter(p => p.life > 0);
   texts = texts.filter(t => t.life > 0);
-  if (boss && (boss.dead || !monsters.includes(boss))) { boss = null; }
+  shots = shots.filter(s => !s.dead);
+  boss = null;
+  for (const m of monsters) if (m.type === 'boss' && (!boss || m.z < boss.z)) boss = m;
   shake *= Math.pow(0.02, dt); redFlash = Math.max(0, redFlash - dt);
 }
 
@@ -453,8 +550,8 @@ function damage(m, dmg) {
   m.hp -= dmg; m.flash = 0.07;
   if (m.hp <= 0 && !m.dead) {
     m.dead = true; kills++;
-    const col = m.type === 'grunt' ? C.grunt : m.type === 'brute' ? C.brute : C.gold;
-    burst(m.x, m.r, m.z, col, m.type === 'grunt' ? 6 : m.type === 'brute' ? 14 : 40, m.type === 'boss' ? 7 : 4);
+    const col = m.type === 'boss' ? C.gold : monsterColors(m)[0];
+    burst(m.x, m.r, m.z, col, m.type === 'brute' ? 14 : m.type === 'boss' ? 40 : 6, m.type === 'boss' ? 7 : 4);
     if (m.type === 'boss') { floatText(m.x, m.z, 'BOSS 擊破', C.gold, 1.6); shake = 10; }
   }
 }
@@ -495,6 +592,23 @@ function drawWorld() {
 }
 
 function fade(z) { return clamp((SPAWN_Z + 6 - z) / 10, 0, 1); }
+function monsterColors(m) {
+  switch (m.type) {
+    case 'brute': return [C.brute, C.bruteDark];
+    case 'boss': return [C.boss, C.bossDark];
+    case 'runner': return [C.runner, C.runnerDark];
+    case 'spitter': return [C.spitter, C.spitterDark];
+    default: return [C.grunt, C.gruntDark];
+  }
+}
+// acid blobs fly in an arc from the spitter to the squad
+function shotY(s) { const k = clamp(1 - s.z / s.z0, 0, 1); return 0.6 + Math.sin(k * Math.PI) * 2.4; }
+function drawShot(s) {
+  drawShadow(s.x, s.z, .25);
+  const [sx, sy, sc] = P(s.x, shotY(s), s.z), r = Math.max(2, .28 * sc);
+  ctx.fillStyle = 'rgba(157,255,74,.35)'; ctx.beginPath(); ctx.arc(sx, sy, r * 1.7, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = C.acid; ctx.beginPath(); ctx.arc(sx, sy, r, 0, Math.PI * 2); ctx.fill();
+}
 
 function drawShadow(x, z, r) {
   const [sx, sy, s] = P(x, 0, z);
@@ -508,17 +622,30 @@ function drawMonster(m) {
   drawShadow(m.x, m.z, m.r);
   const bob = Math.abs(Math.sin(m.bob)) * m.r * 0.18;
   const [sx, sy, s] = P(m.x, m.r + bob, m.z), r = m.r * s;
-  const body = m.type === 'grunt' ? C.grunt : m.type === 'brute' ? C.brute : C.boss;
-  const dark = m.type === 'grunt' ? C.gruntDark : m.type === 'brute' ? C.bruteDark : C.bossDark;
+  const [body, dark] = monsterColors(m);
+  // runner: speed streaks trailing behind
+  if (m.type === 'runner') {
+    ctx.strokeStyle = 'rgba(255,255,255,.55)'; ctx.lineWidth = Math.max(1, r * .12); ctx.lineCap = 'round';
+    ctx.beginPath();
+    for (const o of [-.5, 0, .5]) { ctx.moveTo(sx + o * r, sy - r * 1.1); ctx.lineTo(sx + o * r, sy - r * (2 + Math.abs(o) * -1.2 + Math.random() * .4)); }
+    ctx.stroke();
+  }
+  // spitter: acid tube on top, glowing just before it fires
+  if (m.type === 'spitter') {
+    const charging = m.z <= m.stopZ && m.hold < m.stay && m.cd < 0.45;
+    ctx.fillStyle = dark; ctx.fillRect(sx - r * .22, sy - r * 1.55, r * .44, r * .8);
+    ctx.fillStyle = charging ? C.acid : '#0a4f49';
+    ctx.beginPath(); ctx.arc(sx, sy - r * 1.55, r * (charging ? .32 : .22), 0, Math.PI * 2); ctx.fill();
+  }
   // horns
-  if (m.type !== 'grunt') {
+  if (m.type === 'brute' || m.type === 'boss') {
     ctx.fillStyle = m.type === 'boss' ? '#e8e2cf' : '#ffe0b0';
     for (const d of [-1, 1]) { ctx.beginPath(); ctx.moveTo(sx + d * r * .45, sy - r * .7); ctx.lineTo(sx + d * r * .95, sy - r * 1.35); ctx.lineTo(sx + d * r * .75, sy - r * .55); ctx.fill(); }
   }
   // body
-  ctx.fillStyle = m.flash > 0 ? '#fff' : body;
+  ctx.fillStyle = m.flash > 0 && m.type !== 'boss' ? '#fff' : body;
   ctx.beginPath(); ctx.arc(sx, sy, r, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = m.flash > 0 ? '#fff' : dark;
+  ctx.fillStyle = m.flash > 0 && m.type !== 'boss' ? '#fff' : dark;
   ctx.beginPath(); ctx.arc(sx, sy, r, 0.15 * Math.PI, 0.85 * Math.PI); ctx.fill();
   // arms
   ctx.strokeStyle = dark; ctx.lineWidth = Math.max(1.5, r * .22); ctx.lineCap = 'round';
@@ -649,6 +776,7 @@ function render() {
   for (const g of gates) items.push([g.z, drawGate, g]);
   for (const m of monsters) items.push([m.z, drawMonster, m]);
   for (const p of pickups) items.push([p.z, drawPickup, p]);
+  for (const s of shots) items.push([s.z, drawShot, s]);
   for (const s of soldiers) items.push([s.oz, drawSoldier, s]);
   items.sort((a, b) => b[0] - a[0]);
   for (const [, fn, o] of items) fn(o);
@@ -694,9 +822,14 @@ function updateHud() {
     $('wpow').textContent = '×' + dmgMul.toFixed(2).replace(/0$/, '');
     $('wrate').textContent = '×' + rateMul.toFixed(2).replace(/0$/, '');
     $('kills').textContent = kills;
+    $('lvl').textContent = 'LV.' + (tierOf(d) + 1);
   }
   const bb = $('bossbar');
-  if (boss && state === 'play') { bb.hidden = false; $('bossfill').style.width = Math.max(0, boss.hp / boss.maxHp * 100) + '%'; }
+  if (boss && state === 'play') {
+    bb.hidden = false; $('bossfill').style.width = Math.max(0, boss.hp / boss.maxHp * 100) + '%';
+    const more = bossQueue + monsters.filter(m => m.type === 'boss').length - 1;
+    $('bosslabel').textContent = more > 0 ? `BOSS　後面還有 ${more} 隻` : 'BOSS';
+  }
   else if (!bb.hidden) bb.hidden = true;
 }
 
@@ -717,6 +850,11 @@ addEventListener('keyup', e => {
   if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') keys.left = false;
   if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') keys.right = false;
 });
+// test hook: __legionDebug.jump(2950, 3000, 4) starts a run near 3000 m with 3000 soldiers and the minigun
+window.__legionDebug = {
+  jump(d, n, wi) { startGame(); for (const k in lossLog) delete lossLog[k]; traveled = d; N = peak = n; weaponIdx = wi ?? weaponIdx; nextAt = d + 5; nextBoss = Math.ceil(d / 500) * 500; },
+  state: () => ({ d: Math.floor(traveled), N, lv: tierOf(traveled) + 1, monsters: monsters.length, bosses: monsters.filter(m => m.type === 'boss').length, bossQueue, shots: shots.length, state, lossLog }),
+};
 $('startBtn').addEventListener('click', startGame);
 $('againBtn').addEventListener('click', startGame);
 addEventListener('resize', resize);

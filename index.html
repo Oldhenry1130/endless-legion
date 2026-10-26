@@ -90,7 +90,7 @@ body { background: var(--sky); color: var(--paper); font-family: var(--f-body); 
     </div>
     <div class="col right">
       <div class="chip">武器 <b id="wname">手槍</b></div>
-      <div class="chip">火力 <b id="wpow">×1.0</b> · 射速 <b id="wrate">×1.0</b></div>
+      <div class="chip">火力 <b id="wpow">×1.0</b> · 射速 <b id="wrate">×1.0</b> · 射程 <b id="wrange">×1.0</b></div>
       <div class="chip">擊殺 <b id="kills">0</b> · 難度 <b id="lvl">LV.1</b></div>
     </div>
   </div>
@@ -105,7 +105,7 @@ body { background: var(--sky); color: var(--paper); font-family: var(--f-body); 
       <ul class="rules">
         <li><span class="tag g">+10</span>綠門增加人數，×2 直接翻倍</li>
         <li><span class="tag r">−8</span>紅門會扣人，但對它開槍可以把數字打上去</li>
-        <li><span class="tag y">GUN</span>撞上武器或強化，提升整支軍團火力</li>
+        <li><span class="tag y">GUN</span>撞上武器或強化（火力、射速、射程），共 10 種槍，越遠越強</li>
         <li><span class="tag b">BOSS</span>每 500 m 出現一次，擋不住就會損失大量士兵</li>
         <li><span class="tag r">LV</span>每 1000 m 難度升級，大王會連續出現，還有衝刺怪和會吐酸液的遠程怪</li>
       </ul>
@@ -134,7 +134,7 @@ body { background: var(--sky); color: var(--paper); font-family: var(--f-body); 
 'use strict';
 
 // ---------- constants ----------
-const ZOFF = 10, HALF = 5, SPAWN_Z = 62, MAXV = 90, SHOOT_CAP = 26, MAXB = 900;
+const ZOFF = 10, HALF = 5, SPAWN_Z = 62, MAX_RANGE = 80, MAXV = 90, SHOOT_CAP = 26, MAXB = 900;
 const C = {
   skyTop: '#2f7fd8', skyLow: '#bfe6ff', haze: '191,230,255',
   grass: '#59b94a', grass2: '#4ea842', road: '#596170', road2: '#525a68',
@@ -145,12 +145,17 @@ const C = {
   good: '34,197,94', bad: '239,68,68', gold: '#ffd23f', ink: '#141826',
 };
 const WEAPONS = [
-  { name: '手槍',   dmg: 1.0, rate: 2.5, spd: 38, pellets: 1, spread: 0,    color: '#ffe066', range: 55 },
-  { name: '衝鋒槍', dmg: 0.8, rate: 7,   spd: 42, pellets: 1, spread: 0.03, color: '#ffd23f', range: 55 },
-  { name: '霰彈槍', dmg: 0.9, rate: 2,   spd: 36, pellets: 5, spread: 0.10, color: '#ffb347', range: 38 },
-  { name: '步槍',   dmg: 2.6, rate: 3.5, spd: 58, pellets: 1, spread: 0,    color: '#9be7ff', range: 72 },
-  { name: '加特林', dmg: 1.2, rate: 12,  spd: 48, pellets: 1, spread: 0.05, color: '#ff9f1c', range: 60 },
-  { name: '火箭筒', dmg: 7.0, rate: 1.1, spd: 30, pellets: 1, spread: 0,    color: '#ff5d5d', range: 72, splash: 1.9 },
+  { name: '手槍',     dmg: 1.0, rate: 2.5, spd: 38,  pellets: 1, spread: 0,    color: '#ffe066', range: 40 },
+  { name: '衝鋒槍',   dmg: 0.8, rate: 7,   spd: 42,  pellets: 1, spread: 0.03, color: '#ffd23f', range: 40 },
+  { name: '霰彈槍',   dmg: 0.9, rate: 2,   spd: 36,  pellets: 5, spread: 0.10, color: '#ffb347', range: 28 },
+  { name: '步槍',     dmg: 2.6, rate: 3.5, spd: 58,  pellets: 1, spread: 0,    color: '#9be7ff', range: 56 },
+  { name: '加特林',   dmg: 1.2, rate: 12,  spd: 48,  pellets: 1, spread: 0.05, color: '#ff9f1c', range: 44 },
+  { name: '火箭筒',   dmg: 7.0, rate: 1.1, spd: 30,  pellets: 1, spread: 0,    color: '#ff5d5d', range: 54, splash: 1.9 },
+  // high tier: pierce = extra monsters a bullet passes through
+  { name: '雷射槍',   dmg: 2.2, rate: 6,   spd: 85,  pellets: 1, spread: 0,    color: '#4df3ff', range: 62, pierce: 3, width: .07 },
+  { name: '火焰噴射器', dmg: 1.1, rate: 18, spd: 26, pellets: 2, spread: 0.16, color: '#ff7a1a', range: 22, pierce: 2, width: .22 },
+  { name: '電漿砲',   dmg: 6.5, rate: 3,   spd: 44,  pellets: 1, spread: 0.02, color: '#c77dff', range: 58, splash: 1.7 },
+  { name: '軌道砲',   dmg: 18,  rate: 1.4, spd: 120, pellets: 1, spread: 0,    color: '#ffffff', range: 72, pierce: 99, width: .16 },
 ];
 
 // ---------- helpers ----------
@@ -159,7 +164,7 @@ const ri = (a, b) => Math.floor(rand(a, b + 1));
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const $ = id => document.getElementById(id);
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
-const difficulty = d => 1 + d / 220 + Math.pow(d / 700, 2);
+const difficulty = d => 1 + d / 400 + Math.pow(d / 1100, 2);
 const scrollSpeed = d => Math.min(15, 8 + d / 260);
 const tierOf = d => Math.floor(d / 1000);                                      // difficulty level steps up every 1000 m
 const effArmy = n => n <= 200 ? n : 200 * Math.pow(n / 200, 0.7);             // huge armies gain firepower more slowly
@@ -185,7 +190,7 @@ function P(x, y, z) { const s = S(z); return [CX + x * s, HOR + (HCAM - y) * s, 
 
 // ---------- state ----------
 let state = 'menu', paused = false;
-let traveled = 0, roadOff = 0, N = 5, peak = 5, weaponIdx = 0, dmgMul = 1, rateMul = 1;
+let traveled = 0, roadOff = 0, N = 5, peak = 5, weaponIdx = 0, dmgMul = 1, rateMul = 1, rangeMul = 1;
 let px = 0, targetX = 0, kills = 0, best = loadBest();
 let nextAt = 18, nextBoss = 500, eventCount = 0;
 let shake = 0, redFlash = 0, shotAcc = 0, rr = 0, gateStep = 1, boss = null;
@@ -194,7 +199,7 @@ let monsters = [], bullets = [], gates = [], pickups = [], parts = [], texts = [
 const keys = {};
 
 function reset() {
-  traveled = 0; N = 5; peak = 5; weaponIdx = 0; dmgMul = 1; rateMul = 1;
+  traveled = 0; N = 5; peak = 5; weaponIdx = 0; dmgMul = 1; rateMul = 1; rangeMul = 1;
   px = targetX = 0; kills = 0; nextAt = 18; nextBoss = 500; eventCount = 0;
   shake = redFlash = shotAcc = 0; boss = null; bossQueue = 0; nextBossSpawn = 0; shots = [];
   monsters = []; bullets = []; gates = []; pickups = []; parts = []; texts = []; soldiers = [];
@@ -211,24 +216,26 @@ function playerDps() {
 // hp: distance-based floor, or seconds of the squad's full fire (LV.2+), whichever is higher.
 // power: soldiers lost on contact at full hp; from LV.2 on part of it is a share of the army.
 function makeMonster(type, x, z, d) {
-  const D = difficulty(d), t = tierOf(d), hpMul = 1 + 0.25 * t, dps = t > 0 ? playerDps() : 0;
+  const D = difficulty(d), t = tierOf(d), hpMul = 1 + 0.2 * t, dps = t > 0 ? playerDps() : 0;
   const m = { type, x, z, flash: 0, bob: Math.random() * 6, cd: rand(0.6, 1.4), hold: 0 };
   switch (type) {
     case 'boss':
-      Object.assign(m, { r: 2.1, hp: Math.max(360 * D * hpMul, dps * (0.6 + 0.2 * t)), power: Math.max(45 * (1 + t), N * Math.min(0.4, 0.08 + 0.05 * t)), spd: 0.9, home: 0.4 });
+      Object.assign(m, { r: 2.1, hp: Math.max(360 * D * hpMul, dps * (0.5 + 0.12 * t)), power: Math.max(45 * (1 + t), N * Math.min(0.22, 0.05 + 0.02 * t)), spd: 0.9, home: 0.4 });
       break;
     case 'brute':
-      Object.assign(m, { r: 0.78, hp: Math.max(24 * D * hpMul, dps * 0.08 * (1 + 0.25 * t)), power: Math.max(6 * (1 + t), N * 0.006 * t), spd: rand(1, 1.6), home: 0.5 });
+      Object.assign(m, { r: 0.78, hp: Math.max(24 * D * hpMul, dps * 0.045 * (1 + 0.2 * t)), power: Math.max(6 * (1 + t), N * 0.0018 * t), spd: rand(1, 1.6), home: 0.5 });
       break;
     case 'runner':
-      Object.assign(m, { r: 0.34, hp: Math.max(1.2 * D * hpMul, dps * 0.0015 * (1 + 0.2 * t)), power: 1 + t + N * 0.0008 * t, spd: rand(6, 8), home: 1.6 });
+      Object.assign(m, { r: 0.34, hp: Math.max(1.2 * D * hpMul, dps * 0.0015 * (1 + 0.2 * t)), power: 1 + t + N * 0.00045 * t, spd: rand(6, 8), home: 1.6 });
       break;
     case 'spitter':
       Object.assign(m, { r: 0.5, hp: Math.max(6 * D * hpMul, dps * 0.015 * (1 + 0.25 * t)), power: 2 + t, spd: rand(1.2, 1.8), home: 0.3, stopZ: rand(20, 28), stay: rand(5, 7) });
       break;
     default:
-      Object.assign(m, { type: 'grunt', r: 0.42, hp: Math.max(2 * D * hpMul, dps * 0.002 * (1 + 0.25 * t)), power: 1 + t + N * 0.0008 * t, spd: rand(1.4, 2.6), home: 0.9 });
+      Object.assign(m, { type: 'grunt', r: 0.42, hp: Math.max(2 * D * hpMul, dps * 0.002 * (1 + 0.25 * t)), power: 1 + t + N * 0.00045 * t, spd: rand(1.4, 2.6), home: 0.9 });
   }
+  // before 1000 m, a small army faces weaker monsters so one bad gate isn't a dead run
+  if (t === 0 && type !== 'boss') m.hp *= clamp(0.45 + N / 120, 0.45, 1);
   m.maxHp = m.hp;
   return m;
 }
@@ -236,8 +243,8 @@ function makeMonster(type, x, z, d) {
 function spawnWave(d) {
   if (monsters.length > 240) return;
   const t = tierOf(d);
-  const n = Math.min(140, Math.round((5 + d / 40 + rand(0, 7)) * (1 + 0.3 * t)));
-  const bruteChance = Math.min(0.22, 0.02 + d / 3500);
+  const n = Math.min(140, Math.round((4 + d / 40 + rand(0, d < 300 ? 4 : 7)) * (1 + 0.22 * t)));
+  const bruteChance = d < 300 ? 0 : Math.min(0.2, 0.02 + d / 4000);
   const runnerChance = d < 300 ? 0 : Math.min(0.25, 0.05 + (d - 300) / 3000);
   const patterns = ['lane', 'lane', 'both', 'stream'];
   if (d > 300) patterns.push('rush');
@@ -267,7 +274,7 @@ function spawnWave(d) {
     depth = n * 0.7;
   }
   // mini-bosses lead the wave from LV.2; ranged spitters trail behind it from 600 m
-  const brutes = t > 0 ? Math.min(8, ri(t, t + 2)) : 0;
+  const brutes = t > 0 ? Math.min(6, ri(t - 1, t + 1)) : 0;
   for (let i = 0; i < brutes; i++) put(rand(-4, 4), SPAWN_Z - 1.5 - (i % 3) * 1.2, 'brute');
   const spitters = d < 600 ? 0 : Math.min(6, ri(0, 1 + t));
   for (let i = 0; i < spitters; i++) put(rand(-4, 4), SPAWN_Z + depth + 1 + i * 1.2, 'spitter');
@@ -276,17 +283,17 @@ function spawnWave(d) {
 function gateSpec(good, d) {
   const t = tierOf(d);
   if (good) {
-    if (Math.random() < 0.28 / (1 + t)) return { kind: 'mul', val: 2 };
-    return { kind: 'add', val: Math.round(rand(3, 9) + d / 22 + (t ? N * rand(0.04, 0.1) : 0)) };
+    if (Math.random() < 0.24 / (1 + 2 * t)) return { kind: 'mul', val: 2 };
+    return { kind: 'add', val: Math.round(rand(3, 9) + d / 22 + (t ? N * rand(0.03, 0.07) : 0)) };
   }
-  if (d > 150 && Math.random() < 0.25 + 0.05 * t) return { kind: 'div', val: t >= 3 && Math.random() < 0.4 ? 3 : 2 };
-  return { kind: 'add', val: -Math.round(rand(4, 9) + d / 18 + N * Math.min(0.5, 0.12 * t)) };
+  if (d > 150 && Math.random() < 0.18 + 0.03 * t) return { kind: 'div', val: t >= 3 && Math.random() < 0.4 ? 3 : 2 };
+  return { kind: 'add', val: -Math.round(rand(4, 9) + d / 18 + N * Math.min(0.25, 0.04 * t)) };
 }
 function spawnGates(d) {
   const t = tierOf(d), roll = Math.random();
   let a, b;
   if (d < 200 || roll < 0.62) { a = gateSpec(true, d); b = gateSpec(false, d); }
-  else if (roll < Math.max(0.72, 0.86 - 0.05 * t)) { a = gateSpec(true, d); b = gateSpec(true, d); }
+  else if (roll < Math.max(0.8, 0.9 - 0.03 * t)) { a = gateSpec(true, d); b = gateSpec(true, d); }
   else { a = gateSpec(false, d); b = gateSpec(false, d); }
   if (Math.random() < 0.5) [a, b] = [b, a];
   for (const g of [a, b]) { g.acc = 0; g.inc = Math.max(1, Math.round(Math.abs(g.val) / 25)); }
@@ -295,9 +302,9 @@ function spawnGates(d) {
 
 function spawnPickups(d) {
   const maxTier = Math.min(WEAPONS.length - 1, 1 + Math.floor(d / 280));
-  let wi = ri(0, maxTier);
+  let wi = ri(Math.max(0, maxTier - 3), maxTier);
   if (wi === weaponIdx) wi = Math.min(maxTier, wi + 1);
-  const other = Math.random() < 0.5 ? { kind: 'power' } : { kind: 'rate' };
+  const other = { kind: ['power', 'rate', 'range'][ri(0, 2)] };
   const left = Math.random() < 0.5;
   pickups.push({ kind: 'weapon', wi, x: left ? -2.5 : 2.5, z: SPAWN_Z, taken: false, spin: 0 });
   pickups.push({ ...other, x: left ? 2.5 : -2.5, z: SPAWN_Z, taken: false, spin: 0 });
@@ -314,7 +321,7 @@ function spawnEvents() {
   }
   if (traveled >= nextBoss) {
     const t = tierOf(traveled);
-    bossQueue = Math.min(5, 1 + t);
+    bossQueue = Math.min(5, 1 + Math.ceil(t / 2));
     nextBossSpawn = traveled;
     const levelUp = nextBoss % 1000 === 0;
     nextBoss += 500;
@@ -335,7 +342,7 @@ function spawnEvents() {
     else spawnPickups(traveled);
   }
   const t = tierOf(traveled);
-  nextAt = traveled + rand(15, 22) * Math.max(0.55, 1 - Math.min(0.3, traveled / 8000) - 0.06 * t);
+  nextAt = traveled + rand(15, 22) * Math.max(0.55, 1 - Math.min(0.3, traveled / 8000) - 0.04 * t);
 }
 
 // ---------- effects ----------
@@ -361,6 +368,8 @@ function applyGate(g) {
   if (g.kind === 'add') N += g.val;
   else if (g.kind === 'mul') N *= g.val;
   else N = Math.ceil(N / g.val);
+  // past 20,000 soldiers, gains shrink so the army doesn't run away to the cap
+  if (N > before && before > 20000) N = before + (N - before) * 20000 / before;
   N = clamp(Math.round(N), 0, 99999);
   const diff = N - before;
   if (diff < 0) lossLog.gate = (lossLog.gate || 0) - diff;
@@ -458,7 +467,7 @@ function update(dt) {
       const s = soldiers[rr++ % shooters];
       for (let p = 0; p < w.pellets; p++) {
         const vx = w.spread ? w.spd * rand(-w.spread, w.spread) : 0;
-        bullets.push({ x: px + s.ox, z: s.oz + 0.3, pz: s.oz + 0.3, vx, vz: w.spd, life: w.range / w.spd, dmg: per, splash: w.splash || 0, color: w.color });
+        bullets.push({ x: px + s.ox, z: s.oz + 0.3, pz: s.oz + 0.3, vx, vz: w.spd, life: Math.min(MAX_RANGE, w.range * rangeMul) / w.spd, dmg: per, splash: w.splash || 0, pierce: w.pierce || 0, width: w.width || 0, color: w.color });
       }
     }
   }
@@ -493,10 +502,15 @@ function update(dt) {
     }
     if (b.dead) continue;
     for (const m of monsters) {
-      if (m.dead) continue;
+      if (m.dead || (b.hits && b.hits.has(m))) continue;
       if (Math.abs(b.x - m.x) < m.r * 0.9 && b.z >= m.z - m.r * 0.7 && b.pz <= m.z + m.r * 0.7) {
-        b.dead = true;
         damage(m, b.dmg);
+        if (b.pierce > 0) {
+          b.pierce--; (b.hits ||= new Set()).add(m);
+          if (Math.random() < 0.25) burst(b.x, m.r, m.z - m.r * .5, b.color, 1, 2);
+          continue;
+        }
+        b.dead = true;
         if (b.splash) {
           for (const o of monsters) if (o !== m && !o.dead && Math.hypot(o.x - m.x, o.z - m.z) < b.splash) damage(o, b.dmg * 0.7);
           burst(b.x, .6, m.z, '#ff9f1c', 8, 5);
@@ -525,7 +539,8 @@ function update(dt) {
       p.taken = true;
       if (p.kind === 'weapon') { weaponIdx = p.wi; floatText(px, 0.5, WEAPONS[p.wi].name + '！', C.gold, 1.1); }
       else if (p.kind === 'power') { dmgMul = +(dmgMul + 0.25).toFixed(2); floatText(px, 0.5, '火力 +25%', C.gold, 1.1); }
-      else { rateMul = +(rateMul + 0.15).toFixed(2); floatText(px, 0.5, '射速 +15%', C.gold, 1.1); }
+      else if (p.kind === 'rate') { rateMul = +(rateMul + 0.15).toFixed(2); floatText(px, 0.5, '射速 +15%', C.gold, 1.1); }
+      else { rangeMul = +(rangeMul + 0.15).toFixed(2); floatText(px, 0.5, '射程 +15%', C.gold, 1.1); }
       burst(p.x, .8, p.z, C.gold, 14);
     }
   }
@@ -717,9 +732,9 @@ function drawPickup(p) {
   let label;
   if (p.kind === 'weapon') { drawGun(sx, sy - r * .12, r * 1.05, C.ink); label = WEAPONS[p.wi].name; }
   else {
-    label = p.kind === 'power' ? '火力 +25%' : '射速 +15%';
+    label = { power: '火力 +25%', rate: '射速 +15%', range: '射程 +15%' }[p.kind];
     ctx.font = `${Math.max(8, r * .9)}px "Noto Sans TC", sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillStyle = C.ink; ctx.fillText(p.kind === 'power' ? '力' : '速', sx, sy);
+    ctx.fillStyle = C.ink; ctx.fillText({ power: '力', rate: '速', range: '遠' }[p.kind], sx, sy);
   }
   const fs = Math.max(8, s * .42);
   ctx.font = `900 ${fs}px "Noto Sans TC", sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
@@ -750,8 +765,8 @@ function drawSoldier(s) {
 function drawBullets() {
   ctx.lineCap = 'round';
   for (const b of bullets) {
-    const a = P(b.x, .55, b.z), t = P(b.x - b.vx * .02, .55, b.z - (b.splash ? .4 : .9));
-    ctx.strokeStyle = b.color; ctx.lineWidth = Math.max(1.5, a[2] * (b.splash ? .22 : .08));
+    const a = P(b.x, .55, b.z), t = P(b.x - b.vx * .02, .55, b.z - (b.splash ? .4 : b.pierce > 10 ? 2.5 : .9));
+    ctx.strokeStyle = b.color; ctx.lineWidth = Math.max(1.5, a[2] * (b.width || (b.splash ? .22 : .08)));
     ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(t[0], t[1]); ctx.stroke();
   }
 }
@@ -814,13 +829,14 @@ function render() {
 let hudCache = '';
 function updateHud() {
   const d = Math.floor(traveled);
-  const key = [d, best, weaponIdx, dmgMul, rateMul, kills].join('|');
+  const key = [d, best, weaponIdx, dmgMul, rateMul, rangeMul, kills].join('|');
   if (key !== hudCache) {
     hudCache = key;
     $('dist').textContent = d; $('best').textContent = Math.max(best, state === 'play' ? d : 0);
     $('wname').textContent = WEAPONS[weaponIdx].name;
     $('wpow').textContent = '×' + dmgMul.toFixed(2).replace(/0$/, '');
     $('wrate').textContent = '×' + rateMul.toFixed(2).replace(/0$/, '');
+    $('wrange').textContent = '×' + rangeMul.toFixed(2).replace(/0$/, '');
     $('kills').textContent = kills;
     $('lvl').textContent = 'LV.' + (tierOf(d) + 1);
   }
@@ -854,7 +870,37 @@ addEventListener('keyup', e => {
 window.__legionDebug = {
   jump(d, n, wi) { startGame(); for (const k in lossLog) delete lossLog[k]; traveled = d; N = peak = n; weaponIdx = wi ?? weaponIdx; nextAt = d + 5; nextBoss = Math.ceil(d / 500) * 500; },
   state: () => ({ d: Math.floor(traveled), N, lv: tierOf(traveled) + 1, monsters: monsters.length, bosses: monsters.filter(m => m.type === 'boss').length, bossQueue, shots: shots.length, state, lossLog }),
+  // headless run steered by a simple player bot; used to tune difficulty
+  sim(maxD = 8000, dt = 1 / 30) {
+    startGame(); for (const k in lossLog) delete lossLog[k];
+    const marks = {};
+    while (state === 'play' && traveled < maxD) {
+      botThink(); update(dt);
+      const k = Math.floor(traveled / 1000) * 1000;
+      if (!(k in marks)) marks[k] = N;
+    }
+    return { d: Math.floor(traveled), peak, kills, weapon: WEAPONS[weaponIdx].name, dmgMul, rateMul, rangeMul, marks, lossLog: { ...lossLog } };
+  },
 };
+// takes the better gate, grabs upgrades, otherwise steps to the lane with the least threat
+function botThink() {
+  const result = s => s.kind === 'add' ? N + s.val : s.kind === 'mul' ? N * s.val : Math.ceil(N / s.val);
+  const g = gates.find(g => !g.done && g.z > 0 && g.z < 22);
+  if (g) { targetX = result(g.L) >= result(g.R) ? -2.5 : 2.5; return; }
+  const ps = pickups.filter(p => !p.taken && p.z > 0 && p.z < 22);
+  if (ps.length) {
+    const w = ps.find(p => p.kind === 'weapon');
+    const pick = w && w.wi > weaponIdx ? w : ps.find(p => p.kind !== 'weapon') || ps[0];
+    targetX = pick.x; return;
+  }
+  let bestX = px, bestS = Infinity;
+  for (const x of [-3, -1.5, 0, 1.5, 3]) {
+    let sc = Math.abs(x - px) * 0.05;
+    for (const m of monsters) if (m.z > 0 && m.z < 24) sc += (m.hp / m.maxHp) * m.power / (0.6 + Math.abs(m.x - x));
+    if (sc < bestS) { bestS = sc; bestX = x; }
+  }
+  targetX = bestX;
+}
 $('startBtn').addEventListener('click', startGame);
 $('againBtn').addEventListener('click', startGame);
 addEventListener('resize', resize);

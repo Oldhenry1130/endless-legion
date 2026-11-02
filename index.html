@@ -2,7 +2,7 @@
 <html lang="zh-Hant-TW">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);box-sizing:border-box}body{margin:0}*,*::before,*::after{box-sizing:border-box}</style>
 <title>無盡軍團</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -27,7 +27,8 @@
   --f-body: "Noto Sans TC", system-ui, sans-serif;
   color-scheme: dark;
 }
-html, body { height: 100%; overflow: hidden; }
+/* manipulation = no double-tap zoom anywhere, while buttons still click and panels still scroll */
+html, body { height: 100%; overflow: hidden; touch-action: manipulation; overscroll-behavior: none; }
 [hidden] { display: none !important; }
 body { background: var(--deep); color: var(--paper); font-family: var(--f-body); user-select: none; -webkit-user-select: none; }
 button { font-family: inherit; color: inherit; }
@@ -2025,7 +2026,7 @@ function updateHud() {
   $('ultArc').style.strokeDashoffset = (276.46 * (1 - charge)).toFixed(1);
   const ub = $('ultBtn');
   if (ub.classList.contains('ready') !== ready) ub.classList.toggle('ready', ready);
-  $('ultPct').textContent = ready ? '雙擊施放' : Math.floor(charge * 100) + '%';
+  $('ultPct').textContent = ready ? (touchUI ? '點一下施放' : '雙擊施放') : Math.floor(charge * 100) + '%';
   const bb = $('bossbar');
   if (boss && state === 'play') {
     bb.hidden = false; $('bossfill').style.width = Math.max(0, boss.hp / boss.maxHp * 100) + '%';
@@ -2179,14 +2180,27 @@ function pointerTo(clientX) {
   const r = cv.getBoundingClientRect();
   targetX = (clientX - r.left - CX) / S(0) + camX;
 }
-let lastTap = 0;
-cv.addEventListener('pointermove', e => pointerTo(e.clientX));
+// mouse: double click casts the ultimate; touch: one quick tap (not a drag) casts it
+let lastTap = 0, touchUI = matchMedia('(pointer: coarse)').matches, tap = null;
+cv.addEventListener('pointermove', e => {
+  pointerTo(e.clientX);
+  if (tap && Math.hypot(e.clientX - tap.x, e.clientY - tap.y) > 14) tap = null;
+});
 cv.addEventListener('pointerdown', e => {
   pointerTo(e.clientX);
   try { cv.setPointerCapture(e.pointerId); } catch (_) {}
+  touchUI = e.pointerType === 'touch' || e.pointerType === 'pen';
+  if (touchUI) { tap = { x: e.clientX, y: e.clientY, t: performance.now() }; return; }
   const now = performance.now();
-  if (now - lastTap < 320) { castUlt(); lastTap = 0; } else lastTap = now;   // double click / double tap
+  if (now - lastTap < 320) { castUlt(); lastTap = 0; } else lastTap = now;
 });
+cv.addEventListener('pointerup', e => {
+  if (tap && e.pointerType !== 'mouse' && performance.now() - tap.t < 260) castUlt();
+  tap = null;
+});
+cv.addEventListener('pointercancel', () => { tap = null; });
+// iOS Safari ignores user-scalable=no: block its pinch and double-tap zoom gestures directly
+for (const ev of ['gesturestart', 'gesturechange', 'dblclick']) document.addEventListener(ev, e => e.preventDefault(), { passive: false });
 addEventListener('keydown', e => {
   if (e.key === ' ') { e.preventDefault(); castUlt(); }
   if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') keys.left = true;

@@ -318,6 +318,7 @@ const ZOFF = 10, SPAWN_Z = 62, MAX_RANGE = 80, MAXV = 90, SHOOT_CAP = 26, MAXB =
 const LEVEL_LEN = 5000, LEVELS = 20, BOSS_AT = [1500, 3150, 4550];
 let LANES = 2, HALF = 5, VIEW_HALF = 5;
 const laneX = i => -HALF + 2.5 + 5 * i;
+const ZB = Array.from({ length: 100 }, () => []);
 const laneOf = x => clamp(Math.floor((x + HALF) / 5), 0, LANES - 1);
 const C = { good: '34,197,94', bad: '239,68,68', gold: '#ffd23f', ink: '#11141f', acid: '#9dff4a' };
 
@@ -409,7 +410,7 @@ function effD(d) {
 const scrollSpeed = d => Math.min(16, 9 + d / 700 + (run ? run.L * 0.08 : 0));
 const KILL_COIN = { grunt: 1, runner: 1, spitter: 3, brute: 8, boss: 50 };
 const ULT_GAIN = { grunt: 1, runner: 1, spitter: 3, brute: 8, boss: 40 };
-const ultNeed = () => 480 * (1 + 0.6 * tierOf(effD(traveled)));
+const ultNeed = () => 1100 * (1 + 0.6 * tierOf(effD(traveled)));
 
 // ---------- canvas / projection ----------
 const cv = $('game'), ctx = cv.getContext('2d');
@@ -487,14 +488,17 @@ function makeMonster(type, x, z, e) {
   // later levels: tougher and harder-hitting enemies on top of the distance curve
   const L = run ? run.L : 1;
   m.hp *= 1 + 0.07 * (L - 1); m.power *= 1 + 0.03 * (L - 1);
+  // waves are 2.5× bigger, so each regular monster is lighter
+  if (type !== 'boss') m.hp *= 0.5;
+  if (type === 'grunt' || type === 'runner') m.power *= 0.7;
   m.maxHp = m.hp;
   return m;
 }
 
 function spawnWave(e) {
-  if (monsters.length > 240) return;
+  if (monsters.length > 600) return;
   const t = tierOf(e);
-  const n = Math.min(160, Math.round((4 + e / 40 + rand(0, e < 300 ? 4 : 7)) * (1 + 0.22 * t) * (1 + 0.25 * (LANES - 2))));
+  const n = Math.min(400, Math.round((4 + e / 40 + rand(0, e < 300 ? 4 : 7)) * (1 + 0.22 * t) * (1 + 0.25 * (LANES - 2)) * 2.5));
   const bruteChance = e < 300 ? 0 : Math.min(0.2, 0.02 + e / 4000);
   const runnerChance = e < 300 ? 0 : Math.min(0.25, 0.05 + (e - 300) / 3000);
   const patterns = ['lane', 'lane', 'all', 'stream'];
@@ -503,7 +507,7 @@ function spawnWave(e) {
   const pattern = e < 120 ? 'lane' : patterns[ri(0, patterns.length - 1)];
   const sp = 0.95;
   const put = (x, z, type) => {
-    if (monsters.length >= 220 + 20 * (LANES - 2)) return;
+    if (monsters.length >= 560 + 40 * (LANES - 2)) return;
     type = type || (Math.random() < bruteChance ? 'brute' : Math.random() < runnerChance ? 'runner' : 'grunt');
     monsters.push(makeMonster(type, clamp(x, -HALF + 0.4, HALF - 0.4), z, e));
   };
@@ -784,7 +788,11 @@ function update(rdt) {
     }
   }
 
-  // bullets
+  // bullets — monsters bucketed by depth so each bullet only tests the ones near it
+  if (playing) {
+    for (const b of ZB) b.length = 0;
+    for (const m of monsters) if (!m.dead) ZB[clamp(Math.floor(m.z) + 10, 0, ZB.length - 1)].push(m);
+  }
   if (playing) for (const b of bullets) {
     if (b.w.homing) steerMissile(b, dt);
     b.pz = b.z; b.z += b.vz * dt; b.x += b.vx * dt; b.life -= dt;
@@ -807,7 +815,8 @@ function update(rdt) {
       if (!s.dead && Math.abs(b.x - s.x) < 0.35 && b.z >= s.z - 0.3 && b.pz <= s.z + 0.3) { s.dead = b.dead = true; burst(s.x, shotY(s), s.z, C.acid, 4, 2); break; }
     }
     if (b.dead) continue;
-    for (const m of monsters) {
+    const lo = clamp(Math.floor(Math.min(b.pz, b.z) - 2.3) + 10, 0, ZB.length - 1), hi = clamp(Math.floor(Math.max(b.pz, b.z) + 2.3) + 10, 0, ZB.length - 1);
+    scan: for (let k = lo; k <= hi; k++) for (const m of ZB[k]) {
       if (m.dead || (b.hits && b.hits.has(m))) continue;
       const hit = b.w.homing ? Math.hypot(b.x - m.x, b.z - m.z) < m.r * 0.95
         : Math.abs(b.x - m.x) < m.r * 0.9 && b.z >= m.z - m.r * 0.7 && b.pz <= m.z + m.r * 0.7;
@@ -815,7 +824,7 @@ function update(rdt) {
         applyHit(m, b.dmg, b.w, b.x);
         if (b.pierce > 0) { b.pierce--; (b.hits ||= new Set()).add(m); continue; }
         b.dead = true;
-        break;
+        break scan;
       }
     }
   }
@@ -1011,7 +1020,7 @@ function fireBeam(x, z0, dmg, range, w) {
 
 function awardKill(m, giveCharge) {
   if (state !== 'play' || !run) return;
-  const v = KILL_COIN[m.type] * 0.0035 * (1 + 0.05 * (run.L - 1)) * run.mods.vault;
+  const v = KILL_COIN[m.type] * 0.0015 * (1 + 0.05 * (run.L - 1)) * run.mods.vault;
   run.coinKill += v;
   if (m.type === 'boss') { floatText(m.x, m.z, `BOSS 擊破　+${Math.round(v)}`, C.gold, 1.4); shake = Math.max(shake, 10); }
   if (giveCharge) charge = Math.min(1, charge + ULT_GAIN[m.type] / ultNeed() * run.mods.reactor);
@@ -1424,7 +1433,6 @@ function drawProp(p) {
 function drawMonster(m) {
   const a = fade(m.z); if (a <= 0) return;
   ctx.globalAlpha = a;
-  drawShadow(m.x, m.z, m.r * 1.05);
   const [sx, sy, s] = P(m.x, 0, m.z);
   if (m.slow > 0) { ctx.strokeStyle = 'rgba(140,220,255,.85)'; ctx.lineWidth = Math.max(1.5, s * .06); ctx.beginPath(); ctx.ellipse(sx, sy, m.r * s * 1.1, m.r * s * .4, 0, 0, TAU); ctx.stroke(); }
   const k = m.r * s / 38, bob = Math.abs(Math.sin(m.bob)) * m.r * s * 0.12, f = Math.sin(m.bob * 0.5) > 0 ? 1 : 0;
@@ -1528,7 +1536,6 @@ function drawShot(s) {
 
 function drawSoldier(s) {
   const x = px + s.ox, z = s.oz;
-  drawShadow(x, z, .24);
   const [sx, sy, sc] = P(x, 0, z), w = .68 * sc, h = w * 1.5;
   const bob = Math.abs(Math.sin(s.ph * 0.5)) * h * .04;
   ctx.drawImage(soldierSprite(save.skin, Math.floor(s.ph / 1.6) % 4), sx - w / 2, sy - h * 68 / 72 - bob, w, h);
@@ -1687,6 +1694,12 @@ function render() {
   for (const s of shots) items.push([s.z, drawShot, s]);
   for (const s of soldiers) items.push([s.oz, drawSoldier, s]);
   items.sort((a, b) => b[0] - a[0]);
+  // all monster and soldier shadows in one fill
+  ctx.fillStyle = 'rgba(0,0,0,.24)'; ctx.beginPath();
+  const addShadow = (x, z, r) => { const [sx, sy, s] = P(x, 0, z), rx = r * s; if (rx < 1.5) return; ctx.moveTo(sx + rx, sy); ctx.ellipse(sx, sy, rx, rx * .35, 0, 0, TAU); };
+  for (const m of monsters) if (m.z < SPAWN_Z) addShadow(m.x, m.z, m.r * 1.05);
+  for (const s of soldiers) addShadow(px + s.ox, s.oz, .24);
+  ctx.fill();
   for (const [, fn, o] of items) fn(o);
   drawDronesAndShield();
   drawBullets();
@@ -1929,6 +1942,7 @@ window.__legionDebug = {
     save = keep; simMode = false; state = 'menu'; run = null;
     return r;
   },
+  perf: () => ({ update: perf.u.toFixed(1), render: perf.r.toFixed(1), monsters: monsters.length, bullets: bullets.length, parts: parts.length }),
   BUILDINGS, LEVELS,
 };
 // takes the best gate, grabs upgrades, otherwise steps to the spot with the least threat
@@ -1955,10 +1969,15 @@ function botThink() {
 
 // ---------- loop ----------
 let last = performance.now();
+const perf = { u: 0, r: 0 };
 function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  const t0 = performance.now();
   if (!paused) update(dt);
+  const t1 = performance.now();
   render(); updateHud();
+  const t2 = performance.now();
+  perf.u = perf.u * .9 + (t1 - t0) * .1; perf.r = perf.r * .9 + (t2 - t1) * .1;
   requestAnimationFrame(frame);
 }
 resize();

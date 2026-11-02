@@ -166,6 +166,14 @@ button { font-family: inherit; color: inherit; }
 .pips { display: flex; gap: 3px; }
 .pips i { flex: 1; height: 5px; border-radius: 3px; background: rgba(255,255,255,.1); }
 .pips i.on { background: linear-gradient(90deg, #ffd23f, #ffae1a); }
+.pips i.ex { background: rgba(178,107,255,.18); }
+.pips i.ex.on { background: linear-gradient(90deg, #c38bff, #8a4dff); box-shadow: 0 0 6px rgba(178,107,255,.6); }
+.bld.broke { border-color: rgba(178,107,255,.55); }
+.bld.locked { opacity: .55; }
+.bld.locked .btn svg { width: 14px; height: 14px; vertical-align: -2px; }
+.bld-hint { font-size: 12px; color: #c9a8ff; }
+.base-note { font-size: 13px; color: var(--muted); margin: -4px 0 10px; }
+.base-note b { color: #c9a8ff; }
 .bld-stat { font-size: 13px; color: var(--muted); }
 .bld-stat b { color: var(--paper); font-weight: 700; }
 .bld-stat .to { color: #7dffa6; }
@@ -270,6 +278,7 @@ button { font-family: inherit; color: inherit; }
     <div class="panel">
       <div class="panel-head"><div><h2>軍團基地</h2><div class="sub">用出征賺到的獎金升級設施與裝備</div></div>
         <div style="display:flex;gap:8px;align-items:center"><div class="pill coins"><i class="coin"></i><b id="baseCoins">0</b></div><button class="btn ghost small" data-act="hub" type="button">返回</button></div></div>
+      <div class="base-note" id="baseNote"></div>
       <div class="base-grid" id="baseList"></div>
     </div>
   </div>
@@ -378,20 +387,32 @@ const ICON = {
   slots: '<path d="M3 7h13l3-2.5M3 12h13l3-2.5M3 17h13l3-2.5"/><path d="M8 7v2.5M8 12v2.5M8 17v2.5"/>',
   air: '<path d="M12 2.5c.9 0 1.4 1 1.4 2.4V9.5l7.1 4.1v2l-7.1-2.1v4.1l2 1.5v1.6L12 19.6l-3.4 1.1v-1.6l2-1.5v-4.1l-7.1 2.1v-2l7.1-4.1V4.9c0-1.4.5-2.4 1.4-2.4z"/>',
   workshop: '<path d="M14.5 3.5a5 5 0 0 0-5 6.5L3 16.5 7.5 21l6.5-6.5a5 5 0 0 0 6.5-5l-3 3-3.5-1-1-3.5z"/>',
+  medic: '<rect x="3" y="3" width="18" height="18" rx="4"/><path d="M12 7.5v9M7.5 12h9"/>',
+  recruit: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.8 3.2-6 6.5-6s5.9 2.2 6.5 6M18.5 8v6M15.5 11h6"/>',
+  depot: '<path d="M3 8.5 12 4l9 4.5v8L12 21l-9-4.5z"/><path d="M3 8.5 12 13l9-4.5M12 13v8M7.5 6.2l9 4.5"/>',
+  crit: '<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="3.5"/><path d="M12 1.5v5M12 17.5v5M1.5 12h5M17.5 12h5"/>',
 };
 const BUILDINGS = [
-  { key: 'barracks', name: '兵營',     stat: '起始兵力', max: 10, cost: l => 80 * Math.pow(1.45, l),  val: l => 5 + 4 * l,     show: v => v + ' 人' },
-  { key: 'armory',   name: '軍火庫',   stat: '武器火力', max: 10, cost: l => 100 * Math.pow(1.5, l), val: l => 1 + 0.12 * l,  show: v => '×' + v.toFixed(2) },
-  { key: 'drill',    name: '訓練場',   stat: '射擊速度', max: 10, cost: l => 100 * Math.pow(1.5, l), val: l => 1 + 0.08 * l,  show: v => '×' + v.toFixed(2) },
-  { key: 'tower',    name: '瞭望塔',   stat: '射擊距離', max: 8,  cost: l => 90 * Math.pow(1.45, l),  val: l => 1 + 0.08 * l,  show: v => '×' + v.toFixed(2) },
-  { key: 'plate',    name: '防具工廠', stat: '受傷減免', max: 10, cost: l => 120 * Math.pow(1.5, l), val: l => 0.04 * l,      show: v => Math.round(v * 100) + '%' },
-  { key: 'reactor',  name: '能量核心', stat: '天罰充能', max: 8,  cost: l => 120 * Math.pow(1.5, l), val: l => 1 + 0.1 * l,   show: v => '×' + v.toFixed(1) },
-  { key: 'vault',    name: '金庫',     stat: '獎金加成', max: 10, cost: l => 150 * Math.pow(1.45, l), val: l => 1 + 0.1 * l,   show: v => '×' + v.toFixed(1) },
+  { key: 'barracks', name: '兵營',     stat: '起始兵力', max: 10, ext: 5, cost: l => 80 * Math.pow(1.45, l),  val: l => 5 + 4 * l + (l > 10 ? 6 * (l - 10) : 0), show: v => v + ' 人' },
+  { key: 'armory',   name: '軍火庫',   stat: '武器火力', max: 10, ext: 5, cost: l => 100 * Math.pow(1.5, l), val: l => 1 + 0.12 * l,  show: v => '×' + v.toFixed(2) },
+  { key: 'drill',    name: '訓練場',   stat: '射擊速度', max: 10, ext: 5, cost: l => 100 * Math.pow(1.5, l), val: l => 1 + 0.08 * l,  show: v => '×' + v.toFixed(2) },
+  { key: 'tower',    name: '瞭望塔',   stat: '射擊距離', max: 8,  ext: 2, cost: l => 90 * Math.pow(1.45, l),  val: l => 1 + 0.08 * l,  show: v => '×' + v.toFixed(2) },
+  { key: 'plate',    name: '防具工廠', stat: '受傷減免', max: 10, ext: 3, cost: l => 120 * Math.pow(1.5, l), val: l => 0.04 * l,      show: v => Math.round(v * 100) + '%' },
+  { key: 'reactor',  name: '能量核心', stat: '天罰充能', max: 8,  ext: 4, cost: l => 120 * Math.pow(1.5, l), val: l => 1 + 0.1 * l,   show: v => '×' + v.toFixed(1) },
+  { key: 'vault',    name: '金庫',     stat: '獎金加成', max: 10, ext: 5, cost: l => 150 * Math.pow(1.45, l), val: l => 1 + 0.1 * l,   show: v => '×' + v.toFixed(1) },
   { key: 'workshop', name: '武器工坊', stat: '初始武器', max: 4,  cost: l => [300, 900, 2000, 4000][l], val: l => l,          show: v => WEAPONS[v].name },
-  { key: 'slots',    name: '多重武裝', stat: '同時裝備', max: 2,  cost: l => [1800, 7000][l],           val: l => 1 + l,      show: v => v + ' 把武器' },
-  { key: 'air',      name: '空軍基地', stat: '轟炸支援', max: 5,  cost: l => [500, 1200, 2600, 5000, 9000][l], val: l => 320 - 30 * l, show: v => `每 ${v} m` },
+  { key: 'slots',    name: '多重武裝', stat: '同時裝備', max: 2,  ext: 1, cost: l => [1800, 7000, 40000][l], val: l => 1 + l,     show: v => v + ' 把武器' },
+  { key: 'air',      name: '空軍基地', stat: '轟炸支援', max: 5,  ext: 2, cost: l => [500, 1200, 2600, 5000, 9000, 16000, 26000][l], val: l => 320 - 30 * l, show: v => `每 ${v} m` },
+  { key: 'medic',    name: '戰地醫院', stat: '每 500 m 救回損失兵力', req: 5,  max: 5, cost: l => [600, 1500, 3500, 7000, 14000][l], val: l => 0.04 * l, show: v => v ? Math.round(v * 100) + '%' : '未建造' },
+  { key: 'recruit',  name: '徵兵中心', stat: '增兵門效果', req: 10, max: 5, cost: l => 900 * Math.pow(1.7, l),  val: l => 1 + 0.03 * l,  show: v => '+' + Math.round((v - 1) * 100) + '%' },
+  { key: 'depot',    name: '補給倉庫', stat: '支援道具持續時間', req: 15, max: 5, cost: l => [1500, 3500, 7000, 12000, 20000][l], val: l => 1 + 0.2 * l, show: v => '×' + v.toFixed(1) },
+  { key: 'crit',     name: '暴擊實驗室', stat: '全武器暴擊率（3 倍傷害）', req: 20, max: 8, cost: l => 2000 * Math.pow(1.5, l), val: l => 0.03 * l, show: v => Math.round(v * 100) + '%' },
 ];
 const bld = k => BUILDINGS.find(b => b.key === k);
+const BREAK_AT = 20;   // clearing this level opens every building's 突破 levels
+// cleared: highest level cleared so far
+const bldMax = (b, cleared) => b.max + (cleared >= BREAK_AT ? b.ext || 0 : 0);
+const bldOpen = (b, cleared) => cleared >= (b.req || 0);
 
 // ---------- save ----------
 const SAVE_KEY = 'endless-legion-campaign-v1';
@@ -404,6 +425,7 @@ function loadSave() {
 function persist() { if (simMode) return; try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch (e) {} }
 const upLv = k => save.up[k] || 0;
 const upVal = k => bld(k).val(upLv(k));
+const clearedTo = () => Object.keys(save.cleared).reduce((a, k) => Math.max(a, +k), 0);
 const nextLevel = () => { for (let L = 1; L <= save.unlocked; L++) if (!save.cleared[L]) return L; return Math.min(LEVELS, save.unlocked); };
 
 // ---------- difficulty ----------
@@ -694,6 +716,7 @@ function applyGate(g) {
   if (g.kind === 'add') N += g.val;
   else if (g.kind === 'mul') N *= g.val;
   else N = Math.ceil(N / g.val);
+  if (N > before) N = before + (N - before) * run.mods.recruit;
   // past 5,000 soldiers, gains shrink so the army doesn't run away to the cap
   if (N > before && before > 5000) N = before + (N - before) * 5000 / before;
   N = clamp(Math.round(N), 0, 99999);
@@ -708,7 +731,8 @@ function applyGate(g) {
 function startLevel(L) {
   L = clamp(L, 1, LEVELS);
   run = { L, theme: themeOf(L), coinKill: 0, coinTrip: 0, coinClear: 0, firstClear: !save.cleared[L], nextMile: 1000, zone: 0,
-    mods: { vault: upVal('vault'), reactor: upVal('reactor'), plate: upVal('plate') }, slots: upVal('slots') };
+    mods: { vault: upVal('vault'), reactor: upVal('reactor'), plate: upVal('plate'), medic: upVal('medic'), recruit: upVal('recruit'), depot: upVal('depot'), crit: upVal('crit') },
+    slots: upVal('slots'), nextMedic: 500 };
   setRoad(L);
   resetRun();
   run.base = { dmg: dmgMul, rate: rateMul };
@@ -770,6 +794,11 @@ function update(rdt) {
       run.nextMile += 1000;
     }
     if (traveled >= LEVEL_LEN) { endRun(true); return; }
+    if (traveled >= run.nextMedic) {
+      run.nextMedic += 500;
+      const heal = Math.floor((peak - N) * run.mods.medic);
+      if (heal > 0) { N += heal; floatText(px, 1.6, `醫療兵 +${fmt(heal)}`, '#7dffa6', 1.1); }
+    }
     spawnEvents();
     if (keys.left) targetX -= 10 * rdt;
     if (keys.right) targetX += 10 * rdt;
@@ -914,7 +943,7 @@ function update(rdt) {
     if (!p.taken && Math.abs(p.z) < Rz + 0.5 && laneOf(px) === laneOf(p.x)) {
       p.taken = true;
       if (p.kind === 'weapon') gainWeapon(p.wi);
-      else if (SUPPORT_PICKS[p.kind]) { const sp = SUPPORT_PICKS[p.kind]; sup[p.kind] += sp.dur; floatText(px, 0.5, `${sp.label}！`, `rgb(${sp.color})`, 1.1); }
+      else if (SUPPORT_PICKS[p.kind]) { const sp = SUPPORT_PICKS[p.kind]; sup[p.kind] += sp.dur * run.mods.depot; floatText(px, 0.5, `${sp.label}！`, `rgb(${sp.color})`, 1.1); }
       else if (p.kind === 'power') { dmgMul = +(dmgMul + 0.25).toFixed(2); floatText(px, 0.5, '火力 +25%', C.gold, 1.1); }
       else if (p.kind === 'rate') { rateMul = +(rateMul + 0.15).toFixed(2); floatText(px, 0.5, '射速 +15%', C.gold, 1.1); }
       else if (p.kind === 'range') { rangeMul = +(rangeMul + 0.15).toFixed(2); floatText(px, 0.5, '射程 +15%', C.gold, 1.1); }
@@ -1056,7 +1085,7 @@ function steerMissile(b, dt) {
 
 // one hit from weapon w, with that weapon's special effect
 function applyHit(m, dmg, w, x) {
-  if (w.crit && Math.random() < w.crit) {
+  if (Math.random() < (w.crit || 0) + run.mods.crit) {
     dmg *= 3; burst(m.x, m.r * 1.4, m.z, '#fff27a', 3, 3);
     if (critTextCd <= 0) { floatText(m.x, m.z, '暴擊！', '#fff27a', .7); critTextCd = .35; }
   }
@@ -2031,15 +2060,24 @@ function openLevels() {
 }
 function openBase() {
   $('baseCoins').textContent = fmt(save.coins);
+  const ct = clearedTo(), broke = ct >= BREAK_AT;
+  $('baseNote').innerHTML = broke ? '<b>設施突破已開放</b>　紫色格子是突破等級，加成更強、花費也更高。'
+    : `通關第 ${BREAK_AT} 關後開放<b>設施突破</b>，多數設施可再升級。`;
   $('baseList').innerHTML = BUILDINGS.map(b => {
-    const l = upLv(b.key), max = l >= b.max, cost = max ? 0 : Math.round(b.cost(l));
-    const pips = Array.from({ length: b.max }, (_, i) => `<i class="${i < l ? 'on' : ''}"></i>`).join('');
-    return `<div class="bld"><div class="bld-top"><div class="bld-ico"><svg viewBox="0 0 24 24">${ICON[b.key]}</svg></div>
-      <div><div class="bld-name">${b.name}</div><div class="bld-lv">Lv.${l} / ${b.max}</div></div></div>
+    const ico = `<div class="bld-ico"><svg viewBox="0 0 24 24">${ICON[b.key]}</svg></div>`;
+    if (!bldOpen(b, ct)) return `<div class="bld locked"><div class="bld-top">${ico}
+      <div><div class="bld-name">${b.name}</div><div class="bld-lv">新設施</div></div></div>
+      <div class="bld-stat">${b.stat}</div>
+      <button class="btn ghost small" type="button" disabled>${SVG_LOCK}　通關第 ${b.req} 關解鎖</button></div>`;
+    const top = bldMax(b, ct), l = upLv(b.key), max = l >= top, cost = max ? 0 : Math.round(b.cost(l));
+    const pips = Array.from({ length: top }, (_, i) => `<i class="${i >= b.max ? 'ex' : ''}${i < l ? ' on' : ''}"></i>`).join('');
+    const hint = !broke && b.ext && max ? `<div class="bld-hint">通關第 ${BREAK_AT} 關可突破至 Lv.${b.max + b.ext}</div>` : '';
+    return `<div class="bld${l > b.max ? ' broke' : ''}"><div class="bld-top">${ico}
+      <div><div class="bld-name">${b.name}${b.req ? '<span class="tagline">新</span>' : ''}</div><div class="bld-lv">Lv.${l} / ${top}${l >= b.max && l < top ? (l > b.max ? '　突破中' : '　可突破') : ''}</div></div></div>
       <div class="pips">${pips}</div>
-      <div class="bld-stat">${b.stat}　<b>${b.show(b.val(l))}</b>${max ? '' : `　<span class="to">→ ${b.show(b.val(l + 1))}</span>`}</div>
+      <div class="bld-stat">${b.stat}　<b>${b.show(b.val(l))}</b>${max ? '' : `　<span class="to">→ ${b.show(b.val(l + 1))}</span>`}</div>${hint}
       <button class="btn ${max ? 'ghost' : 'primary'} small" type="button" data-act="upgrade" data-key="${b.key}" ${max || save.coins < cost ? 'disabled' : ''}>
-        ${max ? '已滿級' : `<i class="coin"></i><span class="num">${fmt(cost)}</span>　升級`}</button></div>`;
+        ${max ? '已滿級' : `<i class="coin"></i><span class="num">${fmt(cost)}</span>　${l >= b.max ? '突破' : l === 0 && b.req ? '建造' : '升級'}`}</button></div>`;
   }).join('');
   showScreen('scrBase');
 }
@@ -2109,7 +2147,7 @@ $('wrap').addEventListener('click', e => {
   else if (act === 'ult') castUlt();
   else if (act === 'upgrade') {
     const bd = bld(b.dataset.key), l = upLv(bd.key), cost = Math.round(bd.cost(l));
-    if (l < bd.max && save.coins >= cost) { save.coins -= cost; save.up[bd.key] = l + 1; persist(); openBase(); }
+    if (bldOpen(bd, clearedTo()) && l < bldMax(bd, clearedTo()) && save.coins >= cost) { save.coins -= cost; save.up[bd.key] = l + 1; persist(); openBase(); }
   } else if (act === 'skin') {
     const i = +b.dataset.i, k = SKINS[i];
     if (!save.skins.includes(i)) { if (save.coins < k.price) return; save.coins -= k.price; save.skins.push(i); }
@@ -2167,7 +2205,7 @@ window.__legionDebug = {
     return r;
   },
   perf: () => ({ update: perf.u.toFixed(1), render: perf.r.toFixed(1), monsters: monsters.length, bullets: bullets.length, parts: parts.length }),
-  BUILDINGS, LEVELS,
+  BUILDINGS, LEVELS, bldMax, bldOpen,
 };
 // takes the best gate, grabs upgrades, otherwise steps to the spot with the least threat
 // soldiers a lane is about to cost: meteor rings, spike strips and boulders near the squad

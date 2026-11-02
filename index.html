@@ -1041,7 +1041,7 @@ function updateSupport(dt, spd) {
     p.z += 38 * dt;
     if (p.z > p.drop && p.z < 58 && p.bombs < p.max) {
       p.drop += 3.5; p.bombs++;
-      for (let k = 0; k < (LANES >= 3 ? 2 : 1); k++) bombs.push({ x: clamp(p.x + rand(-2, 2), -HALF + .5, HALF - .5), z: p.z, y: 6.5, vy: 0 });
+      for (let k = 0; k < (LANES >= 3 ? 2 : 1); k++) bombs.push({ x: clamp(p.x + rand(-2, 2), -HALF + .5, HALF - .5), z: p.z, y: planeAlt(), vy: 0 });
     }
   }
   planes = planes.filter(p => p.z < 95);
@@ -1508,17 +1508,6 @@ function drawPropArt(g, kind, v) {
   }
 }
 // bomber, seen from above and behind. 100×120, nose up
-function drawPlaneArt(g) {
-  g.lineWidth = 2.5;
-  g.beginPath(); g.moveTo(50, 40); g.lineTo(98, 66); g.lineTo(98, 74); g.lineTo(50, 66); g.lineTo(2, 74); g.lineTo(2, 66); g.closePath(); fs(g, lin(g, 0, 40, 0, 74, ['#8c9a7a', '#4d5a40']));
-  g.beginPath(); g.moveTo(50, 98); g.lineTo(74, 110); g.lineTo(74, 116); g.lineTo(50, 110); g.lineTo(26, 116); g.lineTo(26, 110); g.closePath(); fs(g, '#5c6a4c');
-  rrect(g, 41, 4, 18, 112, 9); fs(g, lin(g, 41, 0, 59, 0, ['#6d7b5a', '#a9b893', '#5b6849']));
-  rrect(g, 44.5, 12, 11, 20, 5.5); fs(g, lin(g, 0, 12, 0, 32, ['#c9f6ff', '#3d8fb0']));
-  for (const x of [22, 78]) { rrect(g, x - 5, 58, 10, 22, 4); fs(g, '#3e4836'); }
-  g.fillStyle = '#e8473f'; for (const x of [14, 86]) { g.beginPath(); g.arc(x, 69, 3.4, 0, TAU); g.fill(); }
-  g.fillStyle = '#ffffff'; for (const x of [14, 86]) { g.beginPath(); g.arc(x, 69, 1.4, 0, TAU); g.fill(); }
-}
-const planeSprite = () => cached('plane', () => mk(100, 120, drawPlaneArt, 2));
 function drawAir() {
   for (const b of bombs) {
     drawShadow(b.x, b.z, .3);
@@ -1530,12 +1519,41 @@ function drawAir() {
     if (p.z < -4.5) continue;
     const [gx, gy, gs] = P(p.x, 0, p.z);
     ctx.fillStyle = 'rgba(0,0,0,.22)'; ctx.beginPath(); ctx.ellipse(gx, gy, 2.2 * gs, .6 * gs, 0, 0, TAU); ctx.fill();
-    const [sx, sy, s] = P(p.x, 7, p.z), w = 4.4 * s, h = w * 1.2;
-    ctx.drawImage(planeSprite(), sx - w / 2, sy - h * .55, w, h);
-    ctx.save(); ctx.globalCompositeOperation = 'lighter';
-    for (const dx of [-.28, .28]) { ctx.fillStyle = 'rgba(255,170,60,.85)'; ctx.beginPath(); ctx.arc(sx + dx * w, sy + h * .18, w * .05 + Math.random() * w * .02, 0, TAU); ctx.fill(); }
-    ctx.restore();
+    drawPlane(p);
   }
+}
+// the bomber is built in world space (nose toward +z, wings flat) so it lies level in the road's perspective;
+// it flies a few units under the camera so the wings are seen from above, not edge-on
+const planeAlt = () => clamp(HCAM - 4, 3.5, 6.5);
+function drawPlane(p) {
+  const roll = Math.sin(clock * 1.7 + p.x) * 0.06, cr = Math.cos(roll), sr = Math.sin(roll);
+  const alt = planeAlt(), Q = (x, y, z) => P(p.x + x * cr - y * sr, alt + x * sr + y * cr, p.z + z);
+  const poly = (pts, fill, line) => {
+    ctx.beginPath(); pts.forEach(([x, y, z], i) => { const q = Q(x, y, z); i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1]); }); ctx.closePath();
+    ctx.fillStyle = fill; ctx.fill(); if (line) { ctx.strokeStyle = line; ctx.lineWidth = Math.max(1, Q(0, 0, 0)[2] * .04); ctx.stroke(); }
+  };
+  const ring = (x, y, z, r, fill) => { const c = Q(x, y, z), e = Q(x + r, y, z); const rx = Math.abs(e[0] - c[0]); ctx.fillStyle = fill; ctx.beginPath(); ctx.ellipse(c[0], c[1], rx, rx * .45, 0, 0, TAU); ctx.fill(); };
+  // tailplane and main wings
+  poly([[0, 0, -1.65], [1.05, 0, -2.2], [1.05, 0, -2.45], [0, 0, -2.25], [-1.05, 0, -2.45], [-1.05, 0, -2.2]], '#5c6a4c', OUT);
+  poly([[0, 0, 1.0], [2.2, 0, -.3], [2.2, 0, -.62], [0, 0, -.3], [-2.2, 0, -.62], [-2.2, 0, -.3]], '#7d8a68', OUT);
+  poly([[0, .02, .85], [2.1, .02, -.33], [2.1, .02, -.42], [0, .02, .62], [-2.1, .02, -.42], [-2.1, .02, -.33]], 'rgba(255,255,255,.18)');
+  for (const x of [-1.6, 1.6]) { ring(x, .02, -.33, .2, '#e8473f'); ring(x, .03, -.33, .08, '#ffffff'); }
+  // engine pods under the wings
+  for (const x of [-1.15, 1.15]) {
+    poly([[x - .13, -.12, .75], [x + .13, -.12, .75], [x + .13, -.12, -.55], [x - .13, -.12, -.55]], '#3e4836', OUT);
+    ring(x, -.12, -.56, .14, '#22281e');
+  }
+  // fuselage: belly, back and the round tail end
+  poly([[-.2, 0, 2.0], [-.24, 0, 1.2], [-.22, 0, -2.0], [-.12, 0, -2.45], [.12, 0, -2.45], [.22, 0, -2.0], [.24, 0, 1.2], [.2, 0, 2.0], [0, 0, 2.45]], '#4f5c40', OUT);
+  poly([[-.13, .28, 1.9], [-.16, .28, 1.2], [-.14, .28, -2.0], [0, .2, -2.4], [.14, .28, -2.0], [.16, .28, 1.2], [.13, .28, 1.9], [0, .2, 2.3]], '#a9b893');
+  poly([[-.11, .3, 2.05], [.11, .3, 2.05], [.13, .3, 1.45], [-.13, .3, 1.45]], '#7fd3ef', OUT);
+  ring(0, .14, -2.45, .13, '#3a4430');
+  // tail fin
+  poly([[0, .25, -1.5], [0, .8, -2.2], [0, .8, -2.42], [0, .25, -2.42]], '#6d7b5a', OUT);
+  // engine exhaust glow
+  ctx.save(); ctx.globalCompositeOperation = 'lighter';
+  for (const x of [-1.15, 1.15]) { const q = Q(x, -.12, -.62); ctx.fillStyle = 'rgba(255,170,60,.85)'; ctx.beginPath(); ctx.arc(q[0], q[1], q[2] * (.1 + Math.random() * .05), 0, TAU); ctx.fill(); }
+  ctx.restore();
 }
 function drawDronesAndShield() {
   if (sup.shield > 0 && soldiers.length) {

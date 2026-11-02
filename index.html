@@ -242,7 +242,7 @@ button { font-family: inherit; color: inherit; }
   <div class="screen hub" id="scrHub" hidden>
     <div class="hub-top">
       <div class="pill coins"><i class="coin"></i><b id="hubCoins">0</b></div>
-      <div class="pill">已通關 <b id="hubCleared">0</b> / 20</div>
+      <div class="pill">已通關 <b id="hubCleared">0</b> / 30</div>
     </div>
     <div class="hub-title">
       <div class="kicker">LEGION RUSH</div>
@@ -315,7 +315,7 @@ const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 // ---------- constants ----------
 const ZOFF = 10, SPAWN_Z = 62, MAX_RANGE = 80, MAXV = 90, SHOOT_CAP = 26, MAXB = 1200;
-const LEVEL_LEN = 5000, LEVELS = 20, BOSS_AT = [1500, 3150, 4550];
+const LEVEL_LEN = 5000, LEVELS = 30, BOSS_AT = [1500, 3150, 4550];
 let LANES = 2, HALF = 5, VIEW_HALF = 5;
 const laneX = i => -HALF + 2.5 + 5 * i;
 const ZB = Array.from({ length: 100 }, () => []);
@@ -328,8 +328,12 @@ const THEMES = [
   { name: '烈日荒漠', sky: ['#d66b2a', '#f7b267', '#ffe3b0'], hills: ['#d9a066', '#b97c45'], ground: ['#e6bf76', '#dcb168'], road: ['#6e6052', '#665849'], curb: ['#c9562c', '#f6e7cf'], haze: '255,226,180', prop: 'cactus', cloud: 'rgba(255,240,215,.75)', sun: 'rgba(255,240,190,' },
   { name: '冰封雪原', sky: ['#4c6fae', '#a9c6ee', '#e8f2ff'], hills: ['#d6e3f5', '#a9c0de'], ground: ['#eef5fc', '#e1ecf8'], road: ['#4f5868', '#495262'], curb: ['#3d7bd9', '#f4f8ff'], haze: '228,240,253', prop: 'pine', cloud: 'rgba(255,255,255,.92)', sun: 'rgba(255,255,255,' },
   { name: '熔岩地獄', sky: ['#1b0a14', '#5e1a14', '#c2451c'], hills: ['#3d1717', '#271010'], ground: ['#3b2727', '#332121'], road: ['#2f2c30', '#29262a'], curb: ['#ff5a1f', '#3a3a3a'], haze: '190,70,30', prop: 'lava', cloud: 'rgba(60,40,40,.85)', sun: 'rgba(255,150,80,' },
+  { name: '鋼鐵廢墟', sky: ['#3b4250', '#7d8696', '#c9c3b5'], hills: ['#5e5a55', '#45423f'], ground: ['#7a7368', '#706a5f'], road: ['#3c3f45', '#36393f'], curb: ['#f2c12e', '#2b2b2b'], haze: '190,185,170', prop: 'ruin', cloud: 'rgba(120,120,125,.8)', sun: 'rgba(255,220,170,', hazard: true },
+  { name: '虛空裂境', sky: ['#07051a', '#2a1458', '#7a3cc4'], hills: ['#2a1a48', '#1a1030'], ground: ['#231a3a', '#1e1632'], road: ['#2b2838', '#262333'], curb: ['#b26bff', '#1b1726'], haze: '120,70,200', prop: 'crystal', cloud: 'rgba(90,60,150,.75)', sun: 'rgba(220,180,255,', hazard: true },
 ];
-const themeOf = L => THEMES[Math.min(3, Math.floor((L - 1) / 5))];
+const themeOf = L => THEMES[Math.min(THEMES.length - 1, Math.floor((L - 1) / 5))];
+// from LV.21 the road itself fights back: boulders, spike strips and falling meteors
+const hazardLv = L => L >= 26 ? 2 : L >= 21 ? 1 : 0;
 const lanesOf = L => L <= 7 ? 2 : L <= 14 ? 3 : 4;
 
 // fx: how the shot looks; knock / crit / slow / fan / splash / homing / pierce / burn / chain / beam: its special effect
@@ -355,6 +359,12 @@ const SKINS = [
   { name: '極地特戰隊', price: 3200, desc: '白色雪地服與毛領兜帽，冰原上的幽靈。', uni: '#eaf2fc', uniD: '#a5b8d2', gear: '#3d4c63', gearD: '#26303f', accent: '#62e3ff', skin: '#ffd9b8', hat: 'hood', gun: '#2d3440' },
   { name: '鋼鐵機甲兵', price: 6000, desc: '全身裝甲與發光目鏡的機械化部隊。', uni: '#8a95a5', uniD: '#4a5260', gear: '#3a414c', gearD: '#22272e', accent: '#4dff9a', skin: null, hat: 'mech', gun: '#1a1d22' },
   { name: '黃金禁衛軍', price: 10000, desc: '金甲紅纓，皇家等級的精銳衛隊。', uni: '#f0c13a', uniD: '#a77a12', gear: '#9a1f1f', gearD: '#5a0f0f', accent: '#fff3b0', skin: '#ffcf9e', hat: 'plume', gun: '#3a2a10' },
+  { name: '玫瑰突擊隊', price: 2000, desc: '粉紅戰裙配高馬尾，優雅又致命的突擊小隊。', uni: '#ff6fa5', uniD: '#c23a72', gear: '#5a2a44', gearD: '#33152a', accent: '#ffe2ef', skin: '#ffd6b8', hat: 'pony', hair: '#6b3a22', hairD: '#3f1f10', skirt: true, gun: '#2a1e26' },
+  { name: '星光魔法少女', price: 4500, desc: '雙馬尾綁上大蝴蝶結，用星光擊退怪物。', uni: '#b78cff', uniD: '#6f45c9', gear: '#ffffff', gearD: '#c9c2e8', accent: '#ff7ac8', skin: '#ffe0c8', hat: 'twin', hair: '#ffe08a', hairD: '#d9a93a', skirt: true, gun: '#4a2f7a' },
+  { name: '女武神戰團', price: 8000, desc: '羽翼頭盔與及腰長髮，披著蒼藍戰袍的戰場女神。', uni: '#cfd8e6', uniD: '#7d8aa3', gear: '#2f56c9', gearD: '#1a2f73', accent: '#ffe07a', skin: '#ffd9bf', hat: 'valk', hair: '#f6e2a2', hairD: '#c9a752', cape: '#2f56c9', capeD: '#152a66', gun: '#2a3348' },
+  { name: '熊熊特攻隊', price: 2500, desc: '毛茸茸的熊耳連帽裝，抱起來很軟，打起來很痛。', uni: '#a8703f', uniD: '#6b4220', gear: '#e9c48f', gearD: '#b88d55', accent: '#ffb3a0', skin: '#f4d6a8', hat: 'bear', tail: 'bear', gun: '#3a2616' },
+  { name: '喵喵突擊隊', price: 3500, desc: '貓耳帽加虎斑尾巴，靈活又愛搗蛋的貓咪部隊。', uni: '#ff9d3a', uniD: '#c4621a', gear: '#fff1dc', gearD: '#d8c3a2', accent: '#ff8fb0', skin: '#ffe2c6', hat: 'cat', tail: 'cat', camo: false, stripes: true, gun: '#3a2412' },
+  { name: '南瓜夜行軍', price: 6666, desc: '南瓜頭戴巫師帽，披著紫色斗篷的萬聖節軍團。', uni: '#3a2450', uniD: '#1c1028', gear: '#ff8a1a', gearD: '#b85a08', accent: '#b6ff4a', skin: null, hat: 'pumpkin', cape: '#5b2a86', capeD: '#2a1040', gun: '#1a1420' },
 ];
 
 const ICON = {
@@ -408,8 +418,8 @@ function effD(d) {
   return d * (0.5 + 0.08 * (L - 1)) + 300 * (L - 1) * Math.min(1, d / 1500) + (d >= 3000 ? 300 : 0) + (d >= 4000 ? 400 : 0);
 }
 const scrollSpeed = d => Math.min(16, 9 + d / 700 + (run ? run.L * 0.08 : 0));
-const KILL_COIN = { grunt: 1, runner: 1, spitter: 3, brute: 8, boss: 50 };
-const ULT_GAIN = { grunt: 1, runner: 1, spitter: 3, brute: 8, boss: 40 };
+const KILL_COIN = { grunt: 1, runner: 1, spitter: 3, brute: 8, boss: 50, rock: 4 };
+const ULT_GAIN = { grunt: 1, runner: 1, spitter: 3, brute: 8, boss: 40, rock: 3 };
 const ultNeed = () => 1100 * (1 + 0.6 * tierOf(effD(traveled)));
 
 // ---------- canvas / projection ----------
@@ -434,7 +444,7 @@ function P(x, y, z) { const s = S(z); return [CX + (x - camX) * s, HOR + (HCAM -
 // ---------- state ----------
 let state = 'menu', paused = false, simMode = false, run = null;
 let traveled = 0, roadOff = 0, N = 5, peak = 5, arms = [0], armAcc = [0], dmgMul = 1, rateMul = 1, rangeMul = 1;
-let sup = {}, supAcc = {}, planes = [], bombs = [], nextAir = 320;
+let sup = {}, supAcc = {}, planes = [], bombs = [], nextAir = 320, traps = [], strikes = [], nextStrike = 0;
 let px = 0, targetX = 0, kills = 0, nextAt = 18, eventCount = 0, bossIdx = 0;
 let shake = 0, redFlash = 0, rr = 0, gateStep = 1, boss = null, bossQueue = 0, nextBossSpawn = 0;
 let monsters = [], bullets = [], gates = [], pickups = [], parts = [], texts = [], soldiers = [], shots = [];
@@ -449,6 +459,7 @@ function resetRun() {
   shake = redFlash = whiteFlash = 0; boss = null; bossQueue = 0; nextBossSpawn = 0;
   monsters = []; bullets = []; gates = []; pickups = []; parts = []; texts = []; soldiers = []; shots = [];
   booms = []; arcs = []; beams = []; bolts = []; charge = 0; ultUses = 0; ult = null;
+  traps = []; strikes = []; nextStrike = 600;
   for (const k in lossLog) delete lossLog[k];
 }
 
@@ -476,6 +487,9 @@ function makeMonster(type, x, z, e) {
       break;
     case 'runner':
       Object.assign(m, { r: 0.36, hp: Math.max(1.2 * D * hpMul, dps * 0.0015 * (1 + 0.2 * t)), power: 1 + t + N * 0.00045 * t, spd: rand(6, 8), home: 1.6 });
+      break;
+    case 'rock':   // boulder blocking a lane: doesn't walk, costs a share of the army on contact, can be shot apart
+      Object.assign(m, { r: 1.55, hp: Math.max(30 * D * hpMul, dps * 0.06 * (1 + 0.2 * t)), power: 3 + t, pct: 0.05 + 0.02 * hazardLv(run.L), spd: 0, home: 0, bob: 0 });
       break;
     case 'spitter':
       Object.assign(m, { r: 0.52, hp: Math.max(6 * D * hpMul, dps * 0.015 * (1 + 0.25 * t)), power: 2 + t, spd: rand(1.2, 1.8), home: 0.3, stopZ: rand(20, 28), stay: rand(5, 7) });
@@ -594,11 +608,62 @@ function spawnEvents() {
     // while a boss is on the road, only gates and pickups come; no extra waves pile up
     const bossOnRoad = bossQueue > 0 || monsters.some(m => m.type === 'boss');
     const r = Math.random();
-    if (r < 0.52 && !bossOnRoad) spawnWave(e);
+    const hz = hazardLv(run.L) ? 0.1 + 0.05 * hazardLv(run.L) : 0;
+    if (r < hz) spawnObstacle(e);
+    else if (r < 0.52 && !bossOnRoad) spawnWave(e);
     else if (r < 0.78) spawnGates(e);
     else spawnPickups(e);
   }
   nextAt = traveled + rand(15, 22) * Math.max(0.55, 1 - Math.min(0.3, e / 8000) - 0.04 * t);
+}
+
+// ---------- terrain hazards (LV.21+) ----------
+// a boulder or a spike strip on one or two lanes; at least one lane always stays open
+function spawnObstacle(e) {
+  const hl = hazardLv(run.L), k = Math.min(LANES - 1, hl > 1 && Math.random() < 0.5 ? 2 : 1);
+  const lanes = shuffle([...Array(LANES).keys()]).slice(0, k);
+  for (const l of lanes) {
+    if (Math.random() < 0.5) monsters.push(makeMonster('rock', laneX(l), SPAWN_Z, e));
+    else traps.push({ x: laneX(l), z: SPAWN_Z, len: 5 + 2 * hl, hit: false, pct: 0.04 + 0.02 * hl });
+  }
+}
+// meteors: a glowing target ring lands where the squad is heading, then the rock hits 1.6 s later
+function spawnStrikes(spd) {
+  const hl = hazardLv(run.L), T = 1.6, n = Math.min(LANES - 1, hl + (zoneOf(traveled) === 2 ? 1 : 0));
+  const near = laneOf(px), others = shuffle([...Array(LANES).keys()].filter(l => l !== near));
+  const lanes = [near, ...others].slice(0, n);
+  for (const l of lanes) strikes.push({ x: clamp(laneX(l) + (l === near ? px - laneX(near) : rand(-1, 1)), -HALF + 1, HALF - 1), z: spd * T, t: T, T, pct: 0.06 + 0.02 * hl });
+  if (!simMode && run.meteorTip !== true) { run.meteorTip = true; showBanner('隕石來襲・快閃開', 'red'); }
+}
+function updateHazards(dt, spd, R, Rz) {
+  if (hazardLv(run.L) && traveled >= nextStrike && traveled < LEVEL_LEN - 200) {
+    spawnStrikes(spd);
+    nextStrike = traveled + rand(160, 240) * (hazardLv(run.L) > 1 ? 0.75 : 1) * (zoneOf(traveled) === 2 ? 0.8 : 1);
+  }
+  for (const t of traps) {
+    t.z -= spd * dt;
+    if (!t.hit && t.z < Rz && t.z + t.len > -Rz && Math.abs(t.x - px) < 2.1 + R * 0.4) {
+      t.hit = true;
+      burst(px, .4, .5, '#c9ced8', 12, 3);
+      loseSoldiers(Math.min(N, Math.ceil(N * t.pct) + 2), 'spike');
+      if (state !== 'play') return;
+    }
+  }
+  for (const s of strikes) {
+    s.z -= spd * dt; s.t -= dt;
+    if (s.t > 0) continue;
+    s.dead = true;
+    for (const o of monsters) if (!o.dead && o.type !== 'boss' && Math.hypot(o.x - s.x, o.z - s.z) < 2.2) damage(o, o.maxHp * 0.6);
+    if (booms.length < 140) booms.push({ x: s.x, z: s.z, r: 2.4, life: .6, max: .6, color: '#ff7a3a' });
+    burst(s.x, .6, s.z, Math.random() < .5 ? '#ffb347' : '#8a7f74', 18, 6);
+    shake = Math.max(shake, 7);
+    if (Math.abs(s.x - px) < 1.9 + R * 0.4 && Math.abs(s.z) < 1.8 + Rz) {
+      loseSoldiers(Math.min(N, Math.ceil(N * s.pct) + 3), 'meteor');
+      if (state !== 'play') return;
+    }
+  }
+  traps = traps.filter(t => t.z + t.len > -4);
+  strikes = strikes.filter(s => !s.dead);
 }
 
 // ---------- effects ----------
@@ -747,7 +812,7 @@ function update(rdt) {
     m.flash -= dt;
     if (m.z < 36) m.x = clamp(m.x + clamp(px - m.x, -1, 1) * m.home * dt, -HALF + m.r * 0.6, HALF - m.r * 0.6);
     if (!m.dead && m.z - m.r * 0.6 < Rz && m.z + m.r * 0.6 > -Rz && Math.abs(m.x - px) < m.r * 0.8 + R) {
-      const cost = Math.max(1, Math.ceil(m.hp / m.maxHp * m.power));
+      const cost = Math.max(1, Math.ceil(m.hp / m.maxHp * (m.power + N * (m.pct || 0))));
       m.dead = true;
       burst(m.x, m.r, m.z, MONSTER_COLOR[m.type], 10);
       loseSoldiers(Math.min(cost, N), m.type);
@@ -841,6 +906,8 @@ function update(rdt) {
     } else if (s.z < -3) s.dead = true;
   }
 
+  if (playing && state === 'play') updateHazards(dt, spd, R, Rz);
+
   // pickups
   if (playing) for (const p of pickups) {
     p.z -= spd * dt; p.spin += dt * 3;
@@ -880,14 +947,18 @@ function update(rdt) {
 }
 
 // ---------- weapon slots and support ----------
+// the squad carries the last N weapons picked up, newest first (the newest fires at full rate);
+// when the slots are full the oldest one is dropped, whatever its strength
 function gainWeapon(wi) {
-  const w = WEAPONS[wi];
-  if (arms.includes(wi)) { dmgMul = +(dmgMul + 0.1).toFixed(2); floatText(px, .5, `${w.name} 強化 +10%`, C.gold, 1.1); return; }
-  if (arms.length < run.slots) { arms.push(wi); armAcc.push(0); floatText(px, .5, `${w.name}　加入！`, C.gold, 1.1); return; }
-  // full: the new gun replaces the weakest one carried
-  let k = 0;
-  arms.forEach((a, i) => { if (armPower(a) < armPower(arms[k])) k = i; });
-  arms[k] = wi; armAcc[k] = 0; floatText(px, .5, w.name + '！', C.gold, 1.1);
+  const w = WEAPONS[wi], had = arms.indexOf(wi);
+  if (had >= 0) {
+    arms.splice(had, 1); armAcc.splice(had, 1);
+    dmgMul = +(dmgMul + 0.1).toFixed(2); floatText(px, .5, `${w.name} 強化 +10%`, C.gold, 1.1);
+  }
+  arms.unshift(wi); armAcc.unshift(0);
+  const dropped = arms.length > run.slots ? arms.pop() : null;
+  if (dropped !== null) armAcc.pop();
+  if (had < 0) floatText(px, .5, dropped !== null && run.slots > 1 ? `${w.name}！（換下 ${WEAPONS[dropped].name}）` : arms.length > 1 ? `${w.name}　加入！` : w.name + '！', C.gold, 1.1);
 }
 const SUPPORT = {
   missile: { name: '飛彈艙', fx: 'missile', homing: true, splash: 1.3, spd: 26, color: '#ff6b6b', range: 80 },
@@ -990,7 +1061,7 @@ function applyHit(m, dmg, w, x) {
     if (critTextCd <= 0) { floatText(m.x, m.z, '暴擊！', '#fff27a', .7); critTextCd = .35; }
   }
   damage(m, dmg);
-  if (w.knock && m.type !== 'boss') m.z += w.knock * (m.type === 'brute' ? 0.35 : 1);
+  if (w.knock && m.type !== 'boss' && m.type !== 'rock') m.z += w.knock * (m.type === 'brute' ? 0.35 : 1);
   if (w.slow) m.slow = Math.max(m.slow, w.slow);
   if (w.burn) { m.burn = 2; m.burnDps = Math.max(m.burnDps, dmg * w.burn); }
   if (w.splash) {
@@ -1069,7 +1140,7 @@ function updateUlt(rdt) {
 
 // ---------- sprites (procedural, pre-rendered) ----------
 const OUT = 'rgba(12,14,26,.92)';
-const MONSTER_COLOR = { grunt: '#a64df5', runner: '#b6e02f', spitter: '#21c0ad', brute: '#e5532f', boss: '#3c3f55' };
+const MONSTER_COLOR = { grunt: '#a64df5', runner: '#b6e02f', spitter: '#21c0ad', brute: '#e5532f', boss: '#3c3f55', rock: '#9a8f84' };
 const sprCache = {};
 function mk(w, h, fn, sc = 2) {
   const c = document.createElement('canvas'); c.width = Math.ceil(w * sc); c.height = Math.ceil(h * sc);
@@ -1105,6 +1176,25 @@ function drawSoldierArt(g, k, f) {
   g.fillStyle = k.accent; g.fillRect(22, 31.5, 4, 3);
   g.fillStyle = 'rgba(255,255,255,.28)'; g.fillRect(13, 27, 2.5, 18); g.fillRect(32.5, 27, 2.5, 18);
   g.fillStyle = k.gearD; g.fillRect(11.5, 46, 25, 3.5);
+  if (k.stripes) { g.strokeStyle = k.uniD; g.lineWidth = 2.5; for (const y of [29, 36, 43]) { g.beginPath(); g.moveTo(12, y); g.lineTo(17, y + 1.5); g.moveTo(36, y); g.lineTo(31, y + 1.5); g.stroke(); } g.lineWidth = 2; }
+  if (k.skirt) {
+    g.beginPath(); g.moveTo(12, 45); g.lineTo(36, 45); g.lineTo(40.5, 56); g.lineTo(7.5, 56); g.closePath(); fs(g, lin(g, 0, 45, 0, 56, [k.uni, k.uniD]));
+    g.fillStyle = k.accent; g.fillRect(9, 53.5, 30, 2);
+  }
+  if (k.cape) {
+    const sw = step * 1.5;
+    g.beginPath(); g.moveTo(12, 25); g.lineTo(36, 25); g.quadraticCurveTo(41, 42, 39 + sw, 58); g.lineTo(9 + sw, 58); g.quadraticCurveTo(7, 42, 12, 25); g.closePath();
+    fs(g, lin(g, 0, 25, 0, 58, [k.cape, k.capeD]));
+    g.strokeStyle = 'rgba(255,255,255,.18)'; g.beginPath(); g.moveTo(18, 30); g.quadraticCurveTo(16, 44, 16 + sw, 56); g.moveTo(30, 30); g.quadraticCurveTo(32, 44, 32 + sw, 56); g.stroke();
+    g.fillStyle = k.accent; g.beginPath(); g.arc(14, 27, 2.2, 0, TAU); g.arc(34, 27, 2.2, 0, TAU); g.fill();
+  }
+  if (k.tail === 'cat') {
+    const w = step * 3;
+    g.beginPath(); g.moveTo(22, 47); g.quadraticCurveTo(4 + w, 54, 6 + w, 36);
+    g.strokeStyle = OUT; g.lineWidth = 7; g.stroke(); g.strokeStyle = k.uni; g.lineWidth = 4.5; g.stroke();
+    g.strokeStyle = k.uniD; g.setLineDash([2.5, 4]); g.stroke(); g.setLineDash([]);
+    g.lineWidth = 2;
+  } else if (k.tail === 'bear') { g.beginPath(); g.arc(24, 49, 4.5, 0, TAU); fs(g, rad(g, 24, 49, 5, k.gear, k.uni)); }
   // rifle held forward over the right shoulder
   rrect(g, 34, 3, 6, 36, 2); fs(g, k.gun);
   g.fillStyle = k.accent; g.fillRect(35, 7, 4, 2.5);
@@ -1114,7 +1204,9 @@ function drawSoldierArt(g, k, f) {
 }
 function drawHat(g, k) {
   g.lineWidth = 2;
-  if (k.hat !== 'mech' && k.hat !== 'hood') { g.beginPath(); g.arc(24, 18, 8.5, 0, TAU); fs(g, k.skin); }
+  if (k.hat !== 'mech' && k.hat !== 'hood' && k.hat !== 'pumpkin') { g.beginPath(); g.arc(24, 18, 8.5, 0, TAU); fs(g, k.skin); }
+  // hair seen from behind: covers the back of the head
+  if (k.hair) { g.beginPath(); g.arc(24, 17.5, 9.2, 0, TAU); fs(g, rad(g, 24, 16, 10, k.hair, k.hairD)); }
   switch (k.hat) {
     case 'helmet':
       g.beginPath(); g.arc(24, 17, 10.5, Math.PI, 0); g.lineTo(34.5, 20); g.lineTo(13.5, 20); g.closePath(); fs(g, rad(g, 24, 14, 12, k.gear, k.gearD));
@@ -1142,6 +1234,59 @@ function drawHat(g, k) {
       g.strokeStyle = OUT; g.lineWidth = 2; g.beginPath(); g.moveTo(30, 6); g.lineTo(33, 0); g.stroke();
       g.beginPath(); g.arc(33, 0.5, 1.8, 0, TAU); g.fillStyle = k.accent; g.fill();
       g.fillStyle = 'rgba(255,255,255,.25)'; g.fillRect(17, 8, 10, 2);
+      break;
+    case 'pony':
+      g.beginPath(); g.ellipse(24, 33, 4.6, 12, 0.08, 0, TAU); fs(g, lin(g, 0, 22, 0, 45, [k.hair, k.hairD]));
+      g.strokeStyle = 'rgba(255,255,255,.25)'; g.beginPath(); g.moveTo(23, 25); g.quadraticCurveTo(22, 33, 24, 41); g.stroke();
+      g.beginPath(); g.arc(24, 23, 3, 0, TAU); fs(g, k.accent);
+      g.strokeStyle = k.uni; g.lineWidth = 3; g.beginPath(); g.arc(24, 17.5, 9.4, Math.PI * 1.05, Math.PI * 1.95); g.stroke();
+      break;
+    case 'twin':
+      for (const sd of [-1, 1]) {
+        g.beginPath(); g.ellipse(24 + sd * 12, 28, 4.5, 11.5, sd * -0.25, 0, TAU); fs(g, lin(g, 0, 16, 0, 40, [k.hair, k.hairD]));
+        // ribbon bow
+        const bx = 24 + sd * 9, by = 12;
+        g.beginPath(); g.moveTo(bx, by); g.lineTo(bx - 5, by - 4); g.lineTo(bx - 5, by + 4); g.closePath(); fs(g, k.accent);
+        g.beginPath(); g.moveTo(bx, by); g.lineTo(bx + 5, by - 4); g.lineTo(bx + 5, by + 4); g.closePath(); fs(g, k.accent);
+        g.beginPath(); g.arc(bx, by, 1.8, 0, TAU); fs(g, '#fff');
+      }
+      g.fillStyle = '#fff6a8'; g.beginPath(); g.arc(24, 9, 2.4, 0, TAU); g.fill();
+      break;
+    case 'valk':
+      rrect(g, 14.5, 16, 19, 30, 7); fs(g, lin(g, 0, 16, 0, 46, [k.hair, k.hairD]));
+      g.strokeStyle = 'rgba(120,90,30,.35)'; g.beginPath(); g.moveTo(20, 24); g.lineTo(19, 44); g.moveTo(28, 24); g.lineTo(29, 44); g.stroke();
+      g.lineWidth = 2;
+      g.beginPath(); g.arc(24, 16, 10, Math.PI, 0); g.lineTo(34, 18); g.lineTo(14, 18); g.closePath(); fs(g, rad(g, 24, 13, 11, '#f4f7fb', '#8a96ab'));
+      for (const sd of [-1, 1]) {
+        g.beginPath(); g.moveTo(24 + sd * 9, 14); g.quadraticCurveTo(24 + sd * 20, 6, 24 + sd * 21, 2); g.quadraticCurveTo(24 + sd * 17, 10, 24 + sd * 18, 12); g.quadraticCurveTo(24 + sd * 14, 13, 24 + sd * 10, 18); g.closePath();
+        fs(g, lin(g, 0, 2, 0, 18, ['#ffffff', '#c9d6ea']));
+      }
+      g.fillStyle = k.accent; g.fillRect(22.5, 7, 3, 9);
+      break;
+    case 'bear':
+      for (const sd of [-1, 1]) { g.beginPath(); g.arc(24 + sd * 8.5, 9, 4.6, 0, TAU); fs(g, k.uni); g.beginPath(); g.arc(24 + sd * 8.5, 9, 2.3, 0, TAU); g.fillStyle = k.accent; g.fill(); }
+      g.beginPath(); g.arc(24, 18, 10.5, 0, TAU); fs(g, rad(g, 24, 16, 11, '#c98d55', k.uniD));
+      g.fillStyle = 'rgba(255,255,255,.18)'; g.beginPath(); g.ellipse(21, 13, 4, 2.5, -.4, 0, TAU); g.fill();
+      break;
+    case 'cat':
+      for (const sd of [-1, 1]) {
+        g.beginPath(); g.moveTo(24 + sd * 3, 10); g.lineTo(24 + sd * 10, 1.5); g.lineTo(24 + sd * 10.5, 14); g.closePath(); fs(g, k.uni);
+        g.beginPath(); g.moveTo(24 + sd * 5.5, 10.5); g.lineTo(24 + sd * 9.3, 5); g.lineTo(24 + sd * 9.4, 12); g.closePath(); g.fillStyle = k.accent; g.fill();
+      }
+      g.beginPath(); g.arc(24, 18, 10.5, 0, TAU); fs(g, rad(g, 24, 16, 11, '#ffc27a', k.uniD));
+      g.strokeStyle = k.uniD; g.lineWidth = 2.2;
+      for (const x of [20, 24, 28]) { g.beginPath(); g.moveTo(x, 9); g.lineTo(x + (x - 24) * .2, 15); g.stroke(); }
+      break;
+    case 'pumpkin':
+      g.beginPath(); g.ellipse(24, 19, 12.5, 10.5, 0, 0, TAU); fs(g, rad(g, 24, 17, 13, '#ffb347', '#d2620a'));
+      g.strokeStyle = 'rgba(120,50,0,.55)'; g.lineWidth = 1.8;
+      for (const dx of [-6, 0, 6]) { g.beginPath(); g.ellipse(24 + dx, 19, 3.2, 10, 0, 0, TAU); g.stroke(); }
+      g.shadowColor = k.accent; g.shadowBlur = 6; g.fillStyle = k.accent;
+      g.beginPath(); g.arc(13, 22, 1.4, 0, TAU); g.arc(35, 22, 1.4, 0, TAU); g.fill(); g.shadowBlur = 0;
+      g.lineWidth = 2;
+      g.beginPath(); g.ellipse(24, 10, 15, 3.6, 0, 0, TAU); fs(g, k.uni);
+      g.beginPath(); g.moveTo(16.5, 10); g.lineTo(23, 0.8); g.lineTo(30, 1.5); g.lineTo(27, 4); g.lineTo(31.5, 10); g.closePath(); fs(g, lin(g, 0, 0, 0, 10, [k.uni, k.uniD]));
+      g.fillStyle = k.accent; g.fillRect(17.5, 7, 13.5, 2.2);
       break;
     case 'plume':
       g.beginPath(); g.ellipse(24, 4, 3.6, 9, 0, 0, TAU); fs(g, lin(g, 0, -5, 0, 13, ['#ff5a5a', k.gear]));
@@ -1230,6 +1375,21 @@ function drawMonsterArt(g, type, f) {
       mouth(60, 78, 15, 7, 5);
       g.lineWidth = 2; for (const s of [-1, 1]) { g.beginPath(); g.moveTo(60 + s * 10, 80); g.lineTo(60 + s * 13, 66); g.lineTo(60 + s * 16, 80); g.closePath(); fs(g, '#fffbe8'); }
       break;
+    case 'rock': {
+      // jagged boulder with a hazard band and glowing cracks
+      const outline = () => { g.beginPath(); g.moveTo(8, 104); g.lineTo(14, 66); g.lineTo(34, 40); g.lineTo(58, 30); g.lineTo(84, 38); g.lineTo(104, 60); g.lineTo(112, 104); g.closePath(); };
+      g.beginPath(); g.ellipse(60, 104, 52, 9, 0, 0, TAU); g.fillStyle = 'rgba(0,0,0,.25)'; g.fill();
+      outline(); fs(g, lin(g, 0, 30, 0, 104, ['#b9b0a4', '#7a7066', '#4a433d']));
+      g.fillStyle = 'rgba(255,255,255,.18)'; g.beginPath(); g.moveTo(34, 42); g.lineTo(58, 32); g.lineTo(52, 50); g.lineTo(30, 58); g.closePath(); g.fill();
+      g.save(); outline(); g.clip();
+      for (let i = -2; i < 9; i++) { g.fillStyle = i % 2 ? '#1c1c1c' : '#ffc61a'; g.beginPath(); g.moveTo(i * 14, 84); g.lineTo(i * 14 + 14, 84); g.lineTo(i * 14 + 24, 72); g.lineTo(i * 14 + 10, 72); g.closePath(); g.fill(); }
+      g.restore();
+      g.strokeStyle = OUT; g.lineWidth = 2; g.beginPath(); g.moveTo(14, 72); g.lineTo(108, 72); g.moveTo(10, 84); g.lineTo(110, 84); g.stroke();
+      g.shadowColor = '#ff6a1a'; g.shadowBlur = 8; g.strokeStyle = '#ff9a3a'; g.lineWidth = 2.5;
+      g.beginPath(); g.moveTo(58, 34); g.lineTo(62, 50); g.lineTo(54, 62); g.moveTo(86, 44); g.lineTo(80, 58); g.lineTo(90, 66); g.moveTo(30, 90); g.lineTo(40, 100); g.stroke();
+      g.shadowBlur = 0;
+      break;
+    }
     case 'boss':
       for (const s of [-1, 1]) {
         g.beginPath(); g.moveTo(60 + s * 26, 50); g.lineTo(60 + s * 58, 22 - sw * s * 4); g.lineTo(60 + s * 54, 44); g.lineTo(60 + s * 60, 58); g.lineTo(60 + s * 46, 62); g.lineTo(60 + s * 52, 76); g.lineTo(60 + s * 30, 72); g.closePath();
@@ -1282,6 +1442,27 @@ function drawPropArt(g, kind, v) {
       g.beginPath(); g.moveTo(22, 104); g.lineTo(30, 84); g.lineTo(46, 80); g.lineTo(56, 104); g.closePath(); fs(g, lin(g, 0, 80, 0, 104, ['#8a97a8', '#525d6c']));
       g.fillStyle = '#fff'; g.beginPath(); g.moveTo(30, 86); g.lineTo(46, 81); g.lineTo(42, 88); g.closePath(); g.fill();
     }
+  } else if (kind === 'ruin') {
+    if (v === 0) {
+      // broken concrete pillar with rebar
+      g.strokeStyle = OUT; g.lineWidth = 4; g.beginPath(); g.moveTo(34, 40); g.lineTo(30, 18); g.moveTo(46, 42); g.lineTo(52, 22); g.stroke();
+      g.strokeStyle = '#8a4b2a'; g.lineWidth = 2; g.stroke();
+      g.lineWidth = 2.5; g.beginPath(); g.moveTo(24, 116); g.lineTo(24, 46); g.lineTo(32, 38); g.lineTo(40, 46); g.lineTo(48, 36); g.lineTo(56, 44); g.lineTo(56, 116); g.closePath();
+      fs(g, lin(g, 24, 0, 56, 0, ['#b8b2a6', '#8c867a', '#6a645a']));
+      g.fillStyle = '#ffc61a'; g.fillRect(26, 92, 28, 6); g.fillStyle = '#1c1c1c'; for (let x = 28; x < 54; x += 8) g.fillRect(x, 92, 4, 6);
+      g.strokeStyle = 'rgba(0,0,0,.35)'; g.beginPath(); g.moveTo(34, 60); g.lineTo(42, 74); g.lineTo(38, 84); g.stroke();
+    } else {
+      // scrap heap with a wheel
+      g.beginPath(); g.moveTo(4, 116); g.lineTo(16, 92); g.lineTo(36, 84); g.lineTo(58, 90); g.lineTo(76, 116); g.closePath(); fs(g, lin(g, 0, 84, 0, 116, ['#7d756a', '#4a443c']));
+      rrect(g, 20, 76, 26, 14, 3); fs(g, '#8a4b2a');
+      g.beginPath(); g.arc(56, 92, 11, 0, TAU); fs(g, '#2a2a2e'); g.beginPath(); g.arc(56, 92, 4, 0, TAU); fs(g, '#9aa0a8');
+    }
+  } else if (kind === 'crystal') {
+    g.shadowColor = '#b26bff'; g.shadowBlur = 10;
+    const shards = v === 0 ? [[40, 116, 12, 86], [24, 116, 8, 52], [56, 116, 8, 60]] : [[30, 116, 10, 46], [50, 116, 9, 38]];
+    for (const [x, y, w, h] of shards) { g.beginPath(); g.moveTo(x - w, y); g.lineTo(x - w * .7, y - h * .75); g.lineTo(x, y - h); g.lineTo(x + w * .7, y - h * .75); g.lineTo(x + w, y); g.closePath(); fs(g, lin(g, x - w, 0, x + w, 0, ['#e6c8ff', '#9a4dff', '#4a1a8a'])); }
+    g.shadowBlur = 0;
+    g.fillStyle = 'rgba(255,255,255,.5)'; for (const [x, y, w, h] of shards) g.fillRect(x - w * .35, y - h * .7, 2, h * .5);
   } else {
     if (v === 0) {
       g.beginPath(); g.moveTo(6, 116); g.lineTo(16, 70); g.lineTo(34, 50); g.lineTo(52, 62); g.lineTo(70, 82); g.lineTo(76, 116); g.closePath(); fs(g, lin(g, 0, 50, 0, 116, ['#4a3a3a', '#1a1212']));
@@ -1405,6 +1586,46 @@ function drawGround() {
 }
 
 function fade(z) { return clamp((SPAWN_Z + 6 - z) / 10, 0, 1); }
+// spike strips and meteor target rings lie flat on the road, under everything else
+function drawFloorHazards() {
+  for (const t of traps) {
+    const z0 = Math.max(NEAR, t.z), z1 = t.z + t.len; if (z1 < NEAR) continue;
+    ctx.globalAlpha = fade(t.z) * (t.hit ? 0.55 : 1);
+    quad(t.x - 2.2, t.x + 2.2, z0, z1, 'rgba(40,16,16,.55)');
+    quad(t.x - 2.2, t.x - 1.95, z0, z1, '#ffc61a'); quad(t.x + 1.95, t.x + 2.2, z0, z1, '#ffc61a');
+    for (let z = t.z + 0.5; z < z1; z += 1) {
+      if (z < NEAR + .3) continue;
+      for (let x = t.x - 1.6; x <= t.x + 1.6 + 1e-6; x += 0.8) {
+        const b = P(x, 0, z), tip = P(x, 0.55, z), w = 0.22 * b[2];
+        ctx.fillStyle = '#d7dce4'; ctx.beginPath(); ctx.moveTo(b[0] - w, b[1]); ctx.lineTo(tip[0], tip[1]); ctx.lineTo(b[0] + w, b[1]); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = '#6c7380'; ctx.beginPath(); ctx.moveTo(b[0], b[1]); ctx.lineTo(tip[0], tip[1]); ctx.lineTo(b[0] + w, b[1]); ctx.closePath(); ctx.fill();
+      }
+    }
+  }
+  for (const s of strikes) {
+    const [sx, sy, sc] = P(s.x, 0.02, s.z), k = 1 - s.t / s.T, r = 2.1 * sc;
+    const blink = 0.55 + 0.45 * Math.sin(clock * (10 + k * 25));
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = `rgba(255,60,40,${0.12 + 0.22 * k})`; ctx.beginPath(); ctx.ellipse(sx, sy, r, r * .36, 0, 0, TAU); ctx.fill();
+    ctx.strokeStyle = `rgba(255,90,60,${blink})`; ctx.lineWidth = Math.max(2, sc * .1);
+    ctx.beginPath(); ctx.ellipse(sx, sy, r, r * .36, 0, 0, TAU); ctx.stroke();
+    ctx.beginPath(); ctx.ellipse(sx, sy, r * k, r * k * .36, 0, 0, TAU); ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+}
+function drawMeteors() {
+  for (const s of strikes) {
+    const k = 1 - s.t / s.T; if (k < 0.35) continue;
+    const y = (1 - k) * 22, [sx, sy, sc] = P(s.x + (1 - k) * 4, y, s.z + (1 - k) * 6), r = Math.max(4, 0.9 * sc);
+    const tail = P(s.x + (1 - k) * 4 + 2.5, y + 5, s.z + (1 - k) * 6 + 3);
+    ctx.save(); ctx.globalCompositeOperation = 'lighter';
+    const tg = ctx.createLinearGradient(sx, sy, tail[0], tail[1]); tg.addColorStop(0, 'rgba(255,170,60,.9)'); tg.addColorStop(1, 'rgba(255,80,30,0)');
+    ctx.strokeStyle = tg; ctx.lineWidth = r * 1.6; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(tail[0], tail[1]); ctx.stroke();
+    ctx.restore();
+    ctx.fillStyle = '#5a4a40'; ctx.beginPath(); ctx.arc(sx, sy, r, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#ffb347'; ctx.beginPath(); ctx.arc(sx - r * .25, sy + r * .2, r * .45, 0, TAU); ctx.fill();
+  }
+}
 function drawShadow(x, z, r) {
   const [sx, sy, s] = P(x, 0, z);
   ctx.fillStyle = 'rgba(0,0,0,.24)';
@@ -1435,7 +1656,7 @@ function drawMonster(m) {
   ctx.globalAlpha = a;
   const [sx, sy, s] = P(m.x, 0, m.z);
   if (m.slow > 0) { ctx.strokeStyle = 'rgba(140,220,255,.85)'; ctx.lineWidth = Math.max(1.5, s * .06); ctx.beginPath(); ctx.ellipse(sx, sy, m.r * s * 1.1, m.r * s * .4, 0, 0, TAU); ctx.stroke(); }
-  const k = m.r * s / 38, bob = Math.abs(Math.sin(m.bob)) * m.r * s * 0.12, f = Math.sin(m.bob * 0.5) > 0 ? 1 : 0;
+  const k = m.r * s / 38, bob = m.type === 'rock' ? 0 : Math.abs(Math.sin(m.bob)) * m.r * s * 0.12, f = Math.sin(m.bob * 0.5) > 0 ? 1 : 0;
   const x0 = sx - 60 * k, y0 = sy - 106 * k - bob;
   ctx.drawImage(monsterSprite(m.type, f), x0, y0, 120 * k, 120 * k);
   if (m.flash > 0 && m.type !== 'boss') { ctx.globalAlpha = a * 0.7; ctx.drawImage(flashSprite(m.type, f), x0, y0, 120 * k, 120 * k); }
@@ -1443,7 +1664,7 @@ function drawMonster(m) {
   if (m.type === 'spitter' && m.z <= m.stopZ && m.hold < m.stay && m.cd < 0.45) {
     ctx.globalAlpha = a * 0.6; ctx.globalCompositeOperation = 'lighter'; ctx.fillStyle = C.acid; ctx.beginPath(); ctx.arc(sx, y0 + 32 * k, 26 * k, 0, TAU); ctx.fill(); ctx.globalCompositeOperation = 'source-over';
   }
-  if (m.type === 'brute' && m.hp < m.maxHp) {
+  if ((m.type === 'brute' || m.type === 'rock') && m.hp < m.maxHp) {
     ctx.globalAlpha = a;
     const w = 70 * k, h = Math.max(3, 6 * k);
     ctx.fillStyle = 'rgba(0,0,0,.6)'; ctx.fillRect(sx - w / 2, y0 + 2 * k, w, h);
@@ -1686,6 +1907,7 @@ function render() {
   if (shake > 0.3 && !reduceMotion) ctx.translate(rand(-shake, shake), rand(-shake, shake));
   drawSky();
   drawGround();
+  drawFloorHazards();
   const items = [];
   propItems(items);
   for (const g of gates) items.push([g.z, drawGate, g]);
@@ -1704,6 +1926,7 @@ function render() {
   drawDronesAndShield();
   drawBullets();
   drawAir();
+  drawMeteors();
   drawFx();
   for (const p of parts) {
     const [sx, sy, s] = P(p.x, p.y, p.z);
@@ -1773,7 +1996,7 @@ function showScreen(id) {
 function toMenu() {
   state = 'menu'; run = null; paused = false;
   setRoad(1);
-  monsters = []; bullets = []; gates = []; pickups = []; shots = []; booms = []; arcs = []; beams = []; bolts = []; texts = [];
+  monsters = []; bullets = []; gates = []; pickups = []; shots = []; booms = []; arcs = []; beams = []; bolts = []; texts = []; traps = []; strikes = [];
   N = 14; soldiers = []; px = targetX = camX = 0; ult = null;
   $('bossbar').hidden = true; $('banner').hidden = true;
 }
@@ -1792,9 +2015,9 @@ const SVG_LOCK = '<svg class="lock" viewBox="0 0 24 24"><rect x="5" y="11" width
 function openLevels() {
   const nl = nextLevel();
   let html = '';
-  for (let w = 0; w < 4; w++) {
+  for (let w = 0; w < THEMES.length; w++) {
     const th = THEMES[w], from = w * 5 + 1, lanes = [...new Set([0, 1, 2, 3, 4].map(i => lanesOf(from + i)))].join('–');
-    html += `<div class="world"><div class="world-head"><b>${th.name}</b><span>第 ${from}–${from + 4} 關 · ${lanes} 線道</span></div><div class="lv-grid">`;
+    html += `<div class="world"><div class="world-head"><b>${th.name}</b><span>第 ${from}–${from + 4} 關 · ${lanes} 線道${th.hazard ? ' · 地形危機' : ''}</span></div><div class="lv-grid">`;
     for (let L = from; L < from + 5; L++) {
       const locked = L > save.unlocked, best = save.best[L] || 0;
       html += `<button class="lv${locked ? ' locked' : ''}${L === nl && !locked ? ' next' : ''}" type="button" ${locked ? 'disabled aria-disabled="true"' : `data-act="play" data-level="${L}"`}
@@ -1928,6 +2151,7 @@ window.__legionDebug = {
   charge() { charge = 1; },
   support(k, t = 10) { sup[k] = t; },
   bomber() { callBomber(); },
+  hazard() { spawnObstacle(effD(traveled)); spawnStrikes(scrollSpeed(traveled)); },
   give(wi) { gainWeapon(wi); },
   money(n) { save.coins += n; persist(); },
   state: () => ({ L: run && run.L, d: Math.floor(traveled), N, monsters: monsters.length, state, lossLog }),
@@ -1946,22 +2170,34 @@ window.__legionDebug = {
   BUILDINGS, LEVELS,
 };
 // takes the best gate, grabs upgrades, otherwise steps to the spot with the least threat
+// soldiers a lane is about to cost: meteor rings, spike strips and boulders near the squad
+function laneDanger(x) {
+  let d = 0;
+  for (const s of strikes) if (Math.abs(s.x - x) < 2.6) d += N * s.pct + 3;
+  for (const t of traps) if (!t.hit && t.z < 16 && t.z + t.len > -1 && Math.abs(t.x - x) < 2.6) d += N * t.pct + 2;
+  for (const m of monsters) if (m.type === 'rock' && m.z > -1 && m.z < 16 && Math.abs(m.x - x) < 3) d += (m.hp / m.maxHp) * (m.power + N * m.pct);
+  return d;
+}
 function botThink() {
   if (charge >= 1 && (monsters.some(m => m.type === 'boss' && m.z < 30) || monsters.filter(m => m.z < 30).length > 30)) castUlt();
   const result = s => s.kind === 'add' ? N + s.val : s.kind === 'mul' ? N * s.val : Math.ceil(N / s.val);
   const g = gates.find(g => !g.done && g.z > 0 && g.z < 22);
-  if (g) { let bi = 0; g.sides.forEach((s, i) => { if (result(s) > result(g.sides[bi])) bi = i; }); targetX = laneX(bi); return; }
-  const ps = pickups.filter(p => !p.taken && p.z > 0 && p.z < 22);
+  if (g) {
+    const sc = i => result(g.sides[i]) - laneDanger(laneX(i));
+    let bi = 0; g.sides.forEach((_, i) => { if (sc(i) > sc(bi)) bi = i; }); targetX = laneX(bi); return;
+  }
+  const ps = pickups.filter(p => !p.taken && p.z > 0 && p.z < 22 && laneDanger(p.x) === 0);
   if (ps.length) {
     const w = ps.find(p => p.kind === 'weapon');
-    const better = w && (armPower(w.wi) > armPower(arms.reduce((a, b) => armPower(a) < armPower(b) ? a : b)) || arms.length < run.slots) && !arms.includes(w.wi);
+    // a new gun pushes out the oldest one, so only take it when it beats that one
+    const better = w && (arms.length < run.slots || armPower(w.wi) > armPower(arms[arms.length - 1])) && !arms.includes(w.wi);
     const pick = better ? w : ps.find(p => p.kind === 'power') || ps.find(p => p.kind !== 'weapon') || ps[0];
     targetX = pick.x; return;
   }
   let bestX = px, bestS = Infinity;
   for (let x = -HALF + 2; x <= HALF - 2 + 1e-6; x += 1.5) {
-    let sc = Math.abs(x - px) * 0.05;
-    for (const m of monsters) if (m.z > 0 && m.z < 24) sc += (m.hp / m.maxHp) * m.power / (0.6 + Math.abs(m.x - x));
+    let sc = Math.abs(x - px) * 0.05 + laneDanger(x);
+    for (const m of monsters) if (m.z > 0 && m.z < 24 && m.type !== 'rock') sc += (m.hp / m.maxHp) * m.power / (0.6 + Math.abs(m.x - x));
     if (sc < bestS) { bestS = sc; bestX = x; }
   }
   targetX = bestX;

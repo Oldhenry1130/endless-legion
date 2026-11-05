@@ -448,10 +448,14 @@ const ultNeed = () => 1100 * (1 + 0.6 * tierOf(effD(traveled)));
 // ---------- canvas / projection ----------
 const cv = $('game'), ctx = cv.getContext('2d');
 let W = 1, H = 1, F = 1, HOR = 0, HCAM = 1, CX = 0, camX = 0, backdrop = null;
+// quality 2 = full, 1 = lighter effects, 0 = lowest; it drops on its own when frames run slow
+const coarse = matchMedia('(pointer: coarse)').matches;
+let quality = coarse ? 1 : 2, DPR = 1;
+const Q_DPR = [1, 1.5, 2], Q_PARTS = [220, 380, 600], Q_TEXTS = [12, 20, 30];
 function resize() {
   const r = cv.getBoundingClientRect();
   W = r.width || 1; H = r.height || 1;
-  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  const dpr = DPR = Math.min(Q_DPR[quality], window.devicePixelRatio || 1);
   cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   CX = W / 2; HOR = H * 0.22;
@@ -597,8 +601,9 @@ function spawnGates(e) {
 
 function spawnPickups(e) {
   const maxTier = Math.min(WEAPONS.length - 1, 1 + Math.floor(e / 220));
-  let wi = ri(Math.max(0, maxTier - 3), maxTier);
-  if (arms.includes(wi)) wi = Math.min(maxTier, wi + 1);
+  // any weapon unlocked so far can drop, the pistol included; avoid the ones already carried when possible
+  const pool = []; for (let i = 0; i <= maxTier; i++) if (!arms.includes(i)) pool.push(i);
+  const wi = pool.length ? pool[ri(0, pool.length - 1)] : ri(0, maxTier);
   const wl = ri(0, LANES - 1), kinds = shuffle(['power', 'rate', 'range', 'coins', 'missiles', 'storm', 'shield', 'drones', 'blades', 'frost', 'phoenix', 'vortex']);
   for (let i = 0; i < LANES; i++) {
     const p = i === wl ? { kind: 'weapon', wi } : { kind: kinds.pop() };
@@ -692,10 +697,10 @@ function updateHazards(dt, spd, R, Rz) {
 
 // ---------- effects ----------
 function burst(x, y, z, color, n, power = 4) {
-  for (let i = 0; i < n && parts.length < 600; i++)
+  for (let i = 0, cap = Q_PARTS[quality]; i < n && parts.length < cap; i++)
     parts.push({ x, y, z, vx: rand(-power, power), vy: rand(1, power * 1.4), vz: rand(-power, power), life: rand(.35, .7), max: .7, color, size: rand(.06, .14) });
 }
-function floatText(x, z, text, color, size = 1) { if (texts.length < 40) texts.push({ x, y: 1.6, z, text, color, life: 1.1, size }); }
+function floatText(x, z, text, color, size = 1) { if (texts.length < Q_TEXTS[quality]) texts.push({ x, y: 1.6, z, text, color, life: 1.1, size }); }
 let bannerTimer = 0;
 function showBanner(t, cls = '') {
   if (simMode) return;
@@ -885,10 +890,7 @@ function update(rdt) {
   }
 
   // bullets — monsters bucketed by depth so each bullet only tests the ones near it
-  if (playing) {
-    for (const b of ZB) b.length = 0;
-    for (const m of monsters) if (!m.dead) ZB[clamp(Math.floor(m.z) + 10, 0, ZB.length - 1)].push(m);
-  }
+  if (playing) fillZB();
   if (playing) for (const b of bullets) {
     if (b.w.homing) steerMissile(b, dt);
     b.pz = b.z; b.z += b.vz * dt; b.x += b.vx * dt; b.life -= dt;
@@ -1028,16 +1030,17 @@ function spawnVortex() {
   vortex = { x: laneX(lane), z: 16, t: 0, T: 2.6, tick: 0 };
 }
 function updateNewSupport(dt, spd) {
+  if (sup.blades > 0 || flames.length || sup.phoenix > 0) fillZB();
   if (sup.blades > 0) {
     const d = supportDmg(0.022);
     for (let i = 0; i < BLADES; i++) {
       const [bx, bz] = bladePos(i);
-      for (const m of monsters) {
-        if (m.dead || (m.bladeCd || 0) > clock || Math.abs(m.x - bx) > 0.8 + m.r * 0.4 || Math.abs(m.z - bz) > 0.8 + m.r * 0.4) continue;
+      forNear(bz - 3, bz + 3, m => {
+        if (m.dead || (m.bladeCd || 0) > clock || Math.abs(m.x - bx) > 0.8 + m.r * 0.4 || Math.abs(m.z - bz) > 0.8 + m.r * 0.4) return;
         m.bladeCd = clock + 0.14; damage(m, d);
         if (pullable(m) && m.type !== 'brute') m.z += 0.35;
-        if (parts.length < 900) burst(m.x, m.r, m.z, '#ff8fd0', 2, 3);
-      }
+        burst(m.x, m.r, m.z, '#ff8fd0', 2, 3);
+      });
     }
   }
   if (sup.frost > 0) {
@@ -1052,7 +1055,7 @@ function updateNewSupport(dt, spd) {
       const dist = Math.hypot(m.x - n.x, m.z);
       if (dist > n.r || dist < n.r - 2.5) continue;
       n.hit.add(m); damage(m, d); m.slow = Math.max(m.slow, 2.2);
-      if (parts.length < 900) burst(m.x, m.r, m.z, '#cfefff', 3, 3);
+      burst(m.x, m.r, m.z, '#cfefff', 3, 3);
     }
   }
   novas = novas.filter(n => n.life < n.T);
@@ -1061,18 +1064,18 @@ function updateNewSupport(dt, spd) {
     supAcc.p += dt;
     if (supAcc.p >= 0.09 && flames.length < 40) { supAcc.p = 0; flames.push({ x: x + rand(-.3, .3), z: z + rand(-.3, .3), life: 2.4, max: 2.4, seed: Math.random() * 9 }); }
     const d = supportDmg(0.03);
-    for (const m of monsters) {
-      if (m.dead || (m.fireCd || 0) > clock || Math.hypot(m.x - x, m.z - z) > 1.6 + m.r * 0.5) continue;
+    forNear(z - 4, z + 4, m => {
+      if (m.dead || (m.fireCd || 0) > clock || Math.hypot(m.x - x, m.z - z) > 1.6 + m.r * 0.5) return;
       m.fireCd = clock + 0.25; damage(m, d); m.burn = 2.5; m.burnDps = Math.max(m.burnDps, d * 0.5);
-    }
+    });
   }
+  const fd = flames.length ? supportDmg(0.012) : 0;
   for (const f of flames) {
     f.life -= dt; f.z -= spd * dt;
-    const d = supportDmg(0.012);
-    for (const m of monsters) {
-      if (m.dead || (m.fireCd || 0) > clock || Math.abs(m.x - f.x) > 1.1 || Math.abs(m.z - f.z) > 1.1) continue;
-      m.fireCd = clock + 0.3; damage(m, d); m.burn = 2; m.burnDps = Math.max(m.burnDps, d * 0.5);
-    }
+    forNear(f.z - 3, f.z + 3, m => {
+      if (m.dead || (m.fireCd || 0) > clock || Math.abs(m.x - f.x) > 1.1 || Math.abs(m.z - f.z) > 1.1) return;
+      m.fireCd = clock + 0.3; damage(m, fd); m.burn = 2; m.burnDps = Math.max(m.burnDps, fd * 0.5);
+    });
   }
   flames = flames.filter(f => f.life > 0 && f.z > -3);
   if (sup.vortex > 0 && !vortex) spawnVortex();
@@ -1099,6 +1102,15 @@ function updateNewSupport(dt, spd) {
       vortex = null;
     }
   }
+}
+function fillZB() {
+  for (const b of ZB) b.length = 0;
+  for (const m of monsters) if (!m.dead) ZB[clamp(Math.floor(m.z) + 10, 0, ZB.length - 1)].push(m);
+}
+// every live monster whose depth is within [z0, z1], from the buckets
+function forNear(z0, z1, fn) {
+  const lo = clamp(Math.floor(z0) + 10, 0, ZB.length - 1), hi = clamp(Math.floor(z1) + 10, 0, ZB.length - 1);
+  for (let k = lo; k <= hi; k++) for (const m of ZB[k]) if (!m.dead) fn(m);
 }
 const droneOffset = i => { const a = clock * 2.2 + i * Math.PI, R = squadRadius() + 0.9; return [Math.cos(a) * R, 0.5 + Math.sin(a) * 0.8]; };
 function updateSupport(dt, spd) {
@@ -1277,6 +1289,17 @@ function silhouette(src) {
   const g = c.getContext('2d'); g.drawImage(src, 0, 0); g.globalCompositeOperation = 'source-in'; g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); return c;
 }
 const cached = (key, fn) => sprCache[key] || (sprCache[key] = fn());
+// halving chain of a sprite: small far-away sprites are drawn from a copy near their screen size
+// instead of being filtered down from the full-size canvas every frame
+function halve(c) {
+  const h = document.createElement('canvas'); h.width = Math.max(1, c.width >> 1); h.height = Math.max(1, c.height >> 1);
+  const g = h.getContext('2d'); g.imageSmoothingQuality = 'high'; g.drawImage(c, 0, 0, h.width, h.height); return h;
+}
+function mip(src, w) {
+  const px = w * DPR;
+  while (src.width >= px * 2 && src.width > 16) src = src._half || (src._half = halve(src));
+  return src;
+}
 function rrect(g, x, y, w, h, r) { g.beginPath(); g.roundRect(x, y, w, h, r); }
 function lin(g, x0, y0, x1, y1, stops) { const gr = g.createLinearGradient(x0, y0, x1, y1); stops.forEach((c, i) => gr.addColorStop(i / (stops.length - 1), c)); return gr; }
 function rad(g, cx, cy, r, c0, c1) { const gr = g.createRadialGradient(cx - r * .35, cy - r * .45, r * .08, cx, cy, r); gr.addColorStop(0, c0); gr.addColorStop(1, c1); return gr; }
@@ -1687,7 +1710,7 @@ function drawSupportFloor() {
     ctx.fillStyle = g; ctx.beginPath(); ctx.ellipse(sx, sy, r, r * .42, 0, 0, TAU); ctx.fill();
     // little flame tongues
     ctx.fillStyle = `rgba(255,170,60,${.7 * k})`;
-    for (let j = 0; j < 3; j++) {
+    for (let j = 0; j < quality + 1; j++) {
       const ox = (j - 1) * r * .45, h = r * (.7 + .5 * Math.sin(clock * 14 + f.seed + j * 2));
       ctx.beginPath(); ctx.moveTo(sx + ox - r * .14, sy); ctx.quadraticCurveTo(sx + ox, sy - h * 1.3, sx + ox + r * .14, sy); ctx.fill();
     }
@@ -1802,7 +1825,7 @@ function drawPhoenix() {
   ctx.fillStyle = '#ffe9a0'; ctx.beginPath(); ctx.ellipse(0, 0, r * .3, r * .6, 0, 0, TAU); ctx.fill();
   ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(0, -r * .62, r * .2, 0, TAU); ctx.fill();
   ctx.restore();
-  if (Math.random() < .5 && parts.length < 900) burst(x, y, z, Math.random() < .5 ? '#ffb347' : '#ffe08a', 1, 2);
+  if (Math.random() < .5) burst(x, y, z, Math.random() < .5 ? '#ffb347' : '#ffe08a', 1, 2);
 }
 function drawDronesAndShield() {
   if (sup.shield > 0 && soldiers.length) {
@@ -1944,18 +1967,19 @@ function drawProp(p) {
   const a = clamp((SPAWN_Z + 26 - p.z) / 12, 0, 1); if (a <= 0) return;
   const [sx, sy, s] = P(p.x, 0, p.z), h = 3.4 * p.sc * s, w = h * 80 / 120;
   if (sx < -w || sx > W + w) return;
-  ctx.globalAlpha = a; ctx.drawImage(propSprite(p.kind, p.v), sx - w / 2, sy - h * 116 / 120, w, h); ctx.globalAlpha = 1;
+  ctx.globalAlpha = a; ctx.drawImage(mip(propSprite(p.kind, p.v), w), sx - w / 2, sy - h * 116 / 120, w, h); ctx.globalAlpha = 1;
 }
 
 function drawMonster(m) {
   const a = fade(m.z); if (a <= 0) return;
+  const [sx, sy, s] = P(m.x, 0, m.z), half = m.r * s * 1.6;
+  if (sx + half < 0 || sx - half > W || half < 1) return;
   ctx.globalAlpha = a;
-  const [sx, sy, s] = P(m.x, 0, m.z);
   if (m.slow > 0) { ctx.strokeStyle = 'rgba(140,220,255,.85)'; ctx.lineWidth = Math.max(1.5, s * .06); ctx.beginPath(); ctx.ellipse(sx, sy, m.r * s * 1.1, m.r * s * .4, 0, 0, TAU); ctx.stroke(); }
   const k = m.r * s / 38, bob = m.type === 'rock' ? 0 : Math.abs(Math.sin(m.bob)) * m.r * s * 0.12, f = Math.sin(m.bob * 0.5) > 0 ? 1 : 0;
-  const x0 = sx - 60 * k, y0 = sy - 106 * k - bob;
-  ctx.drawImage(monsterSprite(m.type, f), x0, y0, 120 * k, 120 * k);
-  if (m.flash > 0 && m.type !== 'boss') { ctx.globalAlpha = a * 0.7; ctx.drawImage(flashSprite(m.type, f), x0, y0, 120 * k, 120 * k); }
+  const x0 = sx - 60 * k, y0 = sy - 106 * k - bob, sz = 120 * k;
+  ctx.drawImage(mip(monsterSprite(m.type, f), sz), x0, y0, sz, sz);
+  if (m.flash > 0 && m.type !== 'boss' && quality > 0) { ctx.globalAlpha = a * 0.7; ctx.drawImage(mip(flashSprite(m.type, f), sz), x0, y0, sz, sz); }
   if (m.burn > 0) { ctx.globalAlpha = a * 0.28; ctx.globalCompositeOperation = 'lighter'; ctx.fillStyle = '#ff7a1a'; ctx.beginPath(); ctx.arc(sx, sy - 44 * k - bob, 40 * k, 0, TAU); ctx.fill(); ctx.globalCompositeOperation = 'source-over'; }
   if (m.type === 'spitter' && m.z <= m.stopZ && m.hold < m.stay && m.cd < 0.45) {
     ctx.globalAlpha = a * 0.6; ctx.globalCompositeOperation = 'lighter'; ctx.fillStyle = C.acid; ctx.beginPath(); ctx.arc(sx, y0 + 32 * k, 26 * k, 0, TAU); ctx.fill(); ctx.globalCompositeOperation = 'source-over';
@@ -2055,7 +2079,7 @@ function drawSoldier(s) {
   const x = px + s.ox, z = s.oz;
   const [sx, sy, sc] = P(x, 0, z), w = .68 * sc, h = w * 1.5;
   const bob = Math.abs(Math.sin(s.ph * 0.5)) * h * .04;
-  ctx.drawImage(soldierSprite(save.skin, Math.floor(s.ph / 1.6) % 4), sx - w / 2, sy - h * 68 / 72 - bob, w, h);
+  ctx.drawImage(mip(soldierSprite(save.skin, Math.floor(s.ph / 1.6) % 4), w), sx - w / 2, sy - h * 68 / 72 - bob, w, h);
 }
 
 function strokeLine(a, b) { ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke(); }
@@ -2253,12 +2277,12 @@ function render() {
 }
 
 // ---------- HUD ----------
-let hudCache = '';
+let hudCache = '', hudBuffs = '', hudUlt = '';
 function updateHud() {
   if (!run || state === 'menu') return;
   const d = Math.min(LEVEL_LEN, Math.floor(traveled)), coins = Math.round(run.coinKill) + run.coinTrip;
   const air = Math.max(0, Math.ceil(nextAir - traveled));
-  const key = [d, coins, arms.join(','), dmgMul, rateMul, rangeMul, air, ...Object.values(sup).map(Math.ceil)].join('|');
+  const key = [d, coins, arms.join(','), dmgMul, rateMul, rangeMul, Math.ceil(air / 10), ...Object.values(sup).map(Math.ceil)].join('|');
   if (key !== hudCache) {
     hudCache = key;
     $('hDist').textContent = fmt(d);
@@ -2267,17 +2291,21 @@ function updateHud() {
     hz.textContent = ['普通', '中等難度', '高難度'][z]; hz.className = 'z' + z;
     $('hCoins').textContent = fmt(coins);
     $('wname').textContent = arms.length > 1 ? arms.map(a => WEAPONS[a].name).join(' ＋ ') : `${WEAPONS[arms[0]].name}・${WEAPONS[arms[0]].tag}`;
-    $('buffs').innerHTML = Object.entries(sup).filter(([, v]) => v > 0).map(([k, v]) => `<div class="pill buff">${SUPPORT_PICKS[k].label} <b>${Math.ceil(v)}s</b></div>`).join('')
-      + (traveled < LEVEL_LEN - 150 ? `<div class="pill buff air">轟炸機 <b>${air} m</b></div>` : '');
+    const bh = Object.entries(sup).filter(([, v]) => v > 0).map(([k, v]) => `<div class="pill buff">${SUPPORT_PICKS[k].label} <b>${Math.ceil(v)}s</b></div>`).join('')
+      + (traveled < LEVEL_LEN - 150 ? `<div class="pill buff air">轟炸機 <b>${Math.ceil(air / 10) * 10} m</b></div>` : '');
+    if (bh !== hudBuffs) { hudBuffs = bh; $('buffs').innerHTML = bh; }
     $('wpow').textContent = '×' + dmgMul.toFixed(2).replace(/\.?0+$/, '');
     $('wrate').textContent = '×' + rateMul.toFixed(2).replace(/\.?0+$/, '');
     $('wrange').textContent = '×' + rangeMul.toFixed(2).replace(/\.?0+$/, '');
   }
   const ready = charge >= 1 && state === 'play';
-  $('ultArc').style.strokeDashoffset = (276.46 * (1 - charge)).toFixed(1);
-  const ub = $('ultBtn');
-  if (ub.classList.contains('ready') !== ready) ub.classList.toggle('ready', ready);
-  $('ultPct').textContent = ready ? (touchUI ? '點一下施放' : '雙擊施放') : Math.floor(charge * 100) + '%';
+  const pct = ready ? (touchUI ? '點一下施放' : '雙擊施放') : Math.floor(charge * 100) + '%';
+  if (pct !== hudUlt) {
+    hudUlt = pct;
+    $('ultArc').style.strokeDashoffset = (276.46 * (1 - charge)).toFixed(1);
+    $('ultPct').textContent = pct;
+    $('ultBtn').classList.toggle('ready', ready);
+  }
   const bb = $('bossbar');
   if (boss && state === 'play') {
     bb.hidden = false; $('bossfill').style.width = Math.max(0, boss.hp / boss.maxHp * 100) + '%';
@@ -2472,6 +2500,39 @@ window.__legionDebug = {
   jump(L, d, n, wi) { startLevel(L); traveled = d; N = peak = n; if (wi != null) arms = [wi]; nextAir = d + 60; nextAt = d + 5; run.nextMile = Math.ceil((d + 1) / 1000) * 1000; run.zone = zoneOf(d); bossIdx = BOSS_AT.filter(b => b < d).length; },
   charge() { charge = 1; },
   step(n = 1) { for (let i = 0; i < n; i++) update(1 / 30); },
+  // render broken into layers, timed separately
+  layers(n = 30) {
+    const T = {}, add = (k, f) => { const t = performance.now(); f(); T[k] = (T[k] || 0) + performance.now() - t; };
+    for (let i = 0; i < n; i++) {
+      update(1 / 60);
+      ctx.save();
+      add('sky', drawSky); add('ground', drawGround); add('floorFx', () => { drawFloorHazards(); drawSupportFloor(); });
+      const items = [];
+      add('sort', () => { propItems(items); for (const m of monsters) items.push([m.z, drawMonster, m]); for (const s of soldiers) items.push([s.oz, drawSoldier, s]); items.sort((a, b) => b[0] - a[0]); });
+      add('shadows', () => { ctx.fillStyle = 'rgba(0,0,0,.24)'; ctx.beginPath(); for (const m of monsters) { const [sx, sy, s] = P(m.x, 0, m.z), rx = m.r * s; if (rx < 1.5) continue; ctx.moveTo(sx + rx, sy); ctx.ellipse(sx, sy, rx, rx * .35, 0, 0, TAU); } ctx.fill(); });
+      add('props', () => { for (const [, fn, o] of items) if (fn === drawProp) fn(o); });
+      add('monsters', () => { for (const [, fn, o] of items) if (fn === drawMonster) fn(o); });
+      add('soldiers', () => { for (const [, fn, o] of items) if (fn === drawSoldier) fn(o); });
+      add('orbit', () => { drawDronesAndShield(); drawOrbiters(); });
+      add('bullets', drawBullets); add('air', () => { drawAir(); drawPhoenix(); drawMeteors(); }); add('fx', drawFx);
+      add('parts', () => { for (const p of parts) { const [sx, sy, s] = P(p.x, p.y, p.z); ctx.globalAlpha = .8; ctx.fillStyle = p.color; const r = Math.max(1, p.size * s); ctx.fillRect(sx - r, sy - r, r * 2, r * 2); } ctx.globalAlpha = 1; });
+      add('texts', () => { for (const t of texts) { const [sx, sy] = P(t.x, t.y, t.z); ctx.font = `${28 * t.size}px Bungee, "Noto Sans TC", sans-serif`; ctx.lineWidth = 5; ctx.strokeStyle = C.ink; ctx.strokeText(t.text, sx, sy); ctx.fillStyle = t.color; ctx.fillText(t.text, sx, sy); } });
+      add('label', drawSquadLabel);
+      ctx.restore();
+    }
+    for (const k in T) T[k] = +(T[k] / n).toFixed(2);
+    return T;
+  },
+  // per-section timing: update, then each render layer
+  bench(n = 60) {
+    const T = {}, add = (k, f) => { const t = performance.now(); f(); T[k] = (T[k] || 0) + performance.now() - t; };
+    for (let i = 0; i < n; i++) {
+      add('update', () => update(1 / 60));
+      add('render', () => render());
+    }
+    for (const k in T) T[k] = +(T[k] / n).toFixed(2);
+    return { ...T, monsters: monsters.length, bullets: bullets.length, parts: parts.length, texts: texts.length, flames: flames.length };
+  },
   support(k, t = 10) { sup[k] = t; },
   bomber() { callBomber(); },
   hazard() { spawnObstacle(effD(traveled)); spawnStrikes(scrollSpeed(traveled)); },
@@ -2529,7 +2590,17 @@ function botThink() {
 // ---------- loop ----------
 let last = performance.now();
 const perf = { u: 0, r: 0 };
+let frameEMA = 16, slowFor = 0, fastFor = 0;
+const qualityTop = coarse ? 1 : 2;
+function watchFrames(ms) {
+  if (ms > 120 || state !== 'play' || paused) return;   // stalls, menus and pauses don't count
+  frameEMA = frameEMA * .92 + ms * .08;
+  if (frameEMA > 24) { slowFor += ms; fastFor = 0; } else if (frameEMA < 17.5) { fastFor += ms; slowFor = 0; } else slowFor = fastFor = 0;
+  if (slowFor > 1500 && quality > 0) { quality--; slowFor = 0; frameEMA = 16; resize(); }
+  else if (fastFor > 10000 && quality < qualityTop) { quality++; fastFor = 0; resize(); }
+}
 function frame(now) {
+  watchFrames(now - last);
   const dt = Math.min(0.05, (now - last) / 1000); last = now;
   const t0 = performance.now();
   if (!paused) update(dt);
